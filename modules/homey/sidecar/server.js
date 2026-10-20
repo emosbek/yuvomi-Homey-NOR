@@ -311,7 +311,7 @@ export function createHomeyHandler({
         ? (reason === 'upstream' ? 'Yuvomi did not answer.' : 'Homey module failed.')
         : (err?.message || 'Request rejected.');
       const payload = { error: message, code: status, reason };
-      if (status < 500 && err?.detail && reason === 'address') payload.detail = err.detail;
+      if (err?.detail && (reason === 'address' || reason === 'homey_unreachable')) payload.detail = err.detail;
       if (status >= 500) console.error('homey sidecar failed', reason);
       try {
         reply(req, res, status, payload);
@@ -395,11 +395,13 @@ export function createHomeyHandler({
       const token = body.token ? String(body.token) : (store.snapshot().token || '');
       if (!validToken(token)) throw new HttpError(400, 'invalid', 'API key is invalid.');
       let reachable = true;
+      let detail = null;
       try {
         await homey.devices(target.origin, token);
       } catch (err) {
         if (err?.reason === 'homey_unauthorized') throw err;
         reachable = false;
+        detail = err?.detail || 'timeout';
       }
       await store.saveConnection({ address: target.origin, token });
       const connection = store.connection();
@@ -408,6 +410,7 @@ export function createHomeyHandler({
         address: connection.address,
         tokenSet: connection.tokenSet,
         reachable,
+        ...(detail ? { detail } : {}),
       });
       return;
     }
