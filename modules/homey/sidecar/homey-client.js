@@ -20,13 +20,23 @@ import http from 'node:http';
 import https from 'node:https';
 import { inspectAddress } from './guard.js';
 
+const NETWORK_DETAILS = new Set(['timeout', 'noroute', 'refused']);
+
+export function classifyNetworkError(err) {
+  const code = err?.code;
+  if (code === 'ECONNREFUSED') return 'refused';
+  if (code === 'ENETUNREACH' || code === 'EHOSTUNREACH' || code === 'ENETDOWN') return 'noroute';
+  return 'timeout';
+}
+
 export class HomeyRequestError extends Error {
-  constructor(homeyStatus) {
+  constructor(homeyStatus, detail = null) {
     const unauthorized = homeyStatus === 401 || homeyStatus === 403;
     super(unauthorized ? 'Homey rejected the API key.' : 'Homey could not be reached.');
     this.status = unauthorized ? 401 : 502;
     this.reason = unauthorized ? 'homey_unauthorized' : 'homey_unreachable';
     this.homeyStatus = homeyStatus;
+    this.detail = !unauthorized && NETWORK_DETAILS.has(detail) ? detail : null;
   }
 }
 
@@ -43,6 +53,12 @@ function requestOnce({ target, token, method, path, body, auth }) {
   }
   const lib = target.protocol === 'https:' ? https : http;
   return new Promise((resolve, reject) => {
+    let settled = false;
+    const fail = (detail) => {
+      if (settled) return;
+      settled = true;
+      reject(new HomeyRequestError(0, detail));
+    };
     const req = lib.request({
       host: target.connectHost,
       port: target.port,
@@ -55,14 +71,19 @@ function requestOnce({ target, token, method, path, body, auth }) {
       const chunks = [];
       res.on('data', (chunk) => chunks.push(chunk));
       res.on('end', () => {
+        if (settled) return;
+        settled = true;
         resolve({
           status: res.statusCode || 0,
           body: Buffer.concat(chunks).toString('utf8'),
         });
       });
     });
-    req.on('timeout', () => req.destroy(new HomeyRequestError(0)));
-    req.on('error', () => reject(new HomeyRequestError(0)));
+    req.on('timeout', () => {
+      req.destroy();
+      fail('timeout');
+    });
+    req.on('error', (err) => fail(classifyNetworkError(err)));
     if (payload) req.write(payload);
     req.end();
   });

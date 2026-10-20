@@ -430,6 +430,38 @@ test('a bad API key is not stored and is not echoed', async () => {
   }
 });
 
+test('a closed port is reported as refused and the key stays out of the answer', async () => {
+  const probe = http.createServer((req, res) => {
+    res.writeHead(404);
+    res.end();
+  });
+  const me = startMe((req, res) => admin(res));
+  const dir = mkdtempSync(path.join(tmpdir(), 'homey-refused-'));
+  await listen(probe);
+  const closedPort = probe.address().port;
+  await close(probe);
+  const meUrl = await listen(me.server);
+  const sidecar = createHomeyServer({ dataDir: dir, yuvomiUrl: meUrl, allowLoopback: true });
+  const base = await listen(sidecar);
+  try {
+    const first = await call(base, '/api/extensions/homey/status', { cookie: 'yuvomi.sid=ok' });
+    const saved = await call(base, '/api/extensions/homey/connection', {
+      method: 'PUT',
+      cookie: `yuvomi.sid=ok; ${first.cookie}`,
+      csrf: first.body.csrfToken,
+      json: { address: `http://127.0.0.1:${closedPort}`, token: TOKEN },
+    });
+    assert.equal(saved.status, 200, JSON.stringify(saved.body));
+    assert.equal(saved.body.reachable, false);
+    assert.equal(saved.body.detail, 'refused');
+    assert.equal(saved.text.includes(TOKEN), false);
+  } finally {
+    await close(sidecar);
+    await close(me.server);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('the gateway serves Homey itself and forwards everything else', async () => {
   const upstream = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });

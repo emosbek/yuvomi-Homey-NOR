@@ -3,8 +3,8 @@ import { t } from '/i18n.js';
 const API = '/api/extensions/homey';
 
 export function reasonMessage(reason, detail) {
-  if (reason === 'address' && detail) {
-    const specific = `extensions.homey.reason.address.${detail}`;
+  if (detail && (reason === 'address' || reason === 'homey_unreachable')) {
+    const specific = `extensions.homey.reason.${reason}.${detail}`;
     const specificText = t(specific);
     if (specificText !== specific) return specificText;
   }
@@ -177,7 +177,12 @@ export function mountConnectionForm(container, { status, signal, onSaved, headin
     });
     csrf = data.csrfToken || csrf;
     token.input.value = '';
-    note(data.reachable ? t('extensions.homey.settings.saved') : t('extensions.homey.settings.savedOffline'), data.reachable);
+    note(
+      data.reachable
+        ? t('extensions.homey.settings.saved')
+        : reasonMessage('homey_unreachable', data.detail),
+      data.reachable,
+    );
     if (onSaved) await onSaved(data);
   }));
 
