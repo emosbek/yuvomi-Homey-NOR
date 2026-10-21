@@ -6,6 +6,7 @@
   "page.addTitle": "Aus Homey hinzufügen",
   "page.filter": "Geräte und Flows filtern",
   "page.devices": "Geräte",
+  "page.noZone": "Ohne Raum",
   "page.flows": "Flows",
   "page.advancedFlows": "Erweiterte Flows",
   "page.webhooks": "Webhook",

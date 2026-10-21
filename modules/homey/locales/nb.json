@@ -6,6 +6,7 @@
   "page.addTitle": "Legg til fra Homey",
   "page.filter": "Filtrer enheter og flyter",
   "page.devices": "Enheter",
+  "page.noZone": "Uten sone",
   "page.flows": "Flyter",
   "page.advancedFlows": "Avanserte flyter",
   "page.webhooks": "Webhook",

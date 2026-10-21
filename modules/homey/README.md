@@ -32,7 +32,7 @@ Nøkkelen skrives til `data/homey/state.json` med filrettigheter som bare eieren
 
 ## Hva en knapp kan gjøre
 
-- **Enhet:** slår av og på en boolsk evne, trykker en knapp-evne, eller sender en valgt verdi. Kallet er `PUT /api/manager/devices/device/:id/capability/:capabilityId` med `{ "value": ... }`.
+- **Enhet:** slår av og på en boolsk evne, trykker en knapp-evne, eller sender en valgt verdi. Et tall med min og maks, som dimming, festes med en skyveknapp. Enhetene står samlet per rom. Kallet er `PUT /api/manager/devices/device/:id/capability/:capabilityId` med `{ "value": ... }`.
 - **Flyt:** `POST /api/manager/flow/flow/:id/trigger`. Avanserte flyter bruker `POST /api/manager/flow/advancedflow/:id/trigger`.
 - **Webhook:** `GET /webhook?event=&tag=` på den lagrede Homey-adressen. Det er Homey sin egen mottaker for webhook-kort.
 

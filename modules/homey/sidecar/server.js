@@ -5,7 +5,7 @@
 
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import http from 'node:http';
-import { createHomeyClient } from './homey-client.js';
+import { createHomeyClient, withZoneNames } from './homey-client.js';
 import { inspectAddress } from './guard.js';
 import { createSessionResolver, moduleAccess } from './session.js';
 import { createStore } from './store.js';
@@ -99,6 +99,11 @@ function cleanDetail(value) {
   return String(value ?? '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, 120);
 }
 
+function cleanClass(value) {
+  const name = String(value ?? '').toLowerCase();
+  return /^[a-z0-9_-]{1,40}$/.test(name) ? name : '';
+}
+
 function validToken(token) {
   return typeof token === 'string'
     && token.length >= 8
@@ -133,6 +138,7 @@ function parsePin(body) {
       capabilityId: String(body.capabilityId),
       mode,
       value: mode === 'set' ? normalizeValue(body.value) : null,
+      deviceClass: cleanClass(body.deviceClass),
     };
   }
   if (body.kind === 'flow') {
@@ -161,6 +167,7 @@ function publicPin(pin, live = {}) {
     label: pin.label,
     detail: pin.detail || '',
     mode: pin.mode || (pin.kind === 'capability' ? 'toggle' : 'trigger'),
+    deviceClass: pin.deviceClass || '',
     value: live.value === undefined ? null : live.value,
     unavailable: live.unavailable === true,
   };
@@ -373,7 +380,10 @@ export function createHomeyHandler({
     if (req.method === 'GET' && rest === '/catalog') {
       requireWrite(access);
       const snap = configured();
-      const devices = await homey.devices(snap.address, snap.token);
+      const devices = withZoneNames(
+        await homey.devices(snap.address, snap.token),
+        await homey.zones(snap.address, snap.token),
+      );
       const flows = await optionalList(() => homey.flows(snap.address, snap.token));
       const advanced = await optionalList(() => homey.advancedFlows(snap.address, snap.token));
       const warning = flows.warning && advanced.warning ? 'flows_unavailable' : null;
