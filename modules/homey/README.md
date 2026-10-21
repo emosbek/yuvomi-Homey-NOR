@@ -15,7 +15,7 @@ På Raspberry Pi-en (standardadresse `192.168.1.24`):
 curl -fsSL https://raw.githubusercontent.com/emosbek/yuvomiMo/cursor/homey-module-a566/modules/homey/install-pi.sh | sudo bash
 ```
 
-Skriptet kloner denne grenen til `/opt/yuvomi`, installerer Docker hvis den mangler, og starter Yuvomi pluss portalen. Åpne `http://192.168.1.24:3000` fra en annen enhet på samme nett.
+Skriptet kloner denne grenen til `/opt/yuvomi`, installerer Docker hvis den mangler, og starter Yuvomi pluss portalen. Kjør den samme kommandoen igjen etter en oppdatering. Portalen leser koden bare når beholderen starter, så skriptet lager den på nytt. Åpne `http://192.168.1.24:3000` fra en annen enhet på samme nett.
 
 Til utvikling på en PC i samme nett:
 

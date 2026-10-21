@@ -62,7 +62,9 @@ EOF
   echo "Ny ${DEST}/.env. Ta vare på filen. Databasen kan ikke åpnes uten nøkkelen i den."
 fi
 
-docker compose -f "${DEST}/modules/homey/compose.yml" up -d --pull always --remove-orphans
+# The gateway loads its code once, at start. A later git checkout does not
+# reach the running process, so an update has to recreate the container.
+docker compose -f "${DEST}/modules/homey/compose.yml" up -d --pull always --remove-orphans --force-recreate
 
 ok=0
 for _ in $(seq 1 60); do

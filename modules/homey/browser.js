@@ -209,7 +209,7 @@ function mountRing(container, { status, signal, csrf, setCsrf }) {
   block.className = 'homey-ring';
   container.append(block);
 
-  function paint({ ringSet, url }) {
+  function paint({ ringSet, url, message = '', bad = false, busy = false }) {
     block.replaceChildren();
     block.append(heading('h3', 'homey-heading', t('extensions.homey.settings.ringHeading')));
     const intro = document.createElement('p');
@@ -243,38 +243,72 @@ function mountRing(container, { status, signal, csrf, setCsrf }) {
     const actions = document.createElement('div');
     actions.className = 'homey-actions';
     const create = button(
-      ringSet || url ? t('extensions.homey.settings.ringNew') : t('extensions.homey.settings.ringCreate'),
+      busy
+        ? t('extensions.homey.settings.ringWorking')
+        : (ringSet || url ? t('extensions.homey.settings.ringNew') : t('extensions.homey.settings.ringCreate')),
       'btn btn--secondary',
     );
+    create.disabled = busy === true;
     create.addEventListener('click', async () => {
-      create.disabled = true;
+      paint({ ringSet, url, busy: true });
       try {
         const data = await homeyApi('/ring-token', { method: 'POST', csrf: csrf(), signal, body: {} });
+        if (signal?.aborted) return;
         setCsrf(data.csrfToken || csrf());
+        if (!data?.token) {
+          paint({
+            ringSet,
+            url,
+            message: t('extensions.homey.settings.ringStale'),
+            bad: true,
+          });
+          return;
+        }
         const next = `${location.origin}/api/extensions/homey/ring?token=${encodeURIComponent(data.token)}`;
         paint({ ringSet: true, url: next });
+        const shown = block.querySelector('input');
+        shown?.scrollIntoView({ block: 'center' });
+        shown?.focus({ preventScroll: true });
       } catch (err) {
+        if (signal?.aborted || err?.name === 'AbortError') return;
         if (err?.csrfToken) setCsrf(err.csrfToken);
-        create.disabled = false;
+        const message = err?.status === 404
+          ? t('extensions.homey.settings.ringStale')
+          : (err?.message || reasonMessage(err?.reason, err?.detail));
+        paint({ ringSet, url, message, bad: true });
       }
     }, { signal });
     actions.append(create);
-    if (ringSet || url) {
+    if ((ringSet || url) && !busy) {
       const remove = button(t('extensions.homey.settings.ringClear'), 'btn btn--danger-outline');
       remove.addEventListener('click', async () => {
-        remove.disabled = true;
+        paint({ ringSet, url, busy: true });
         try {
           const data = await homeyApi('/ring-token', { method: 'DELETE', csrf: csrf(), signal });
+          if (signal?.aborted) return;
           setCsrf(data.csrfToken || csrf());
           paint({ ringSet: false, url: '' });
         } catch (err) {
+          if (signal?.aborted || err?.name === 'AbortError') return;
           if (err?.csrfToken) setCsrf(err.csrfToken);
-          remove.disabled = false;
+          paint({
+            ringSet,
+            url,
+            message: err?.message || reasonMessage(err?.reason, err?.detail),
+            bad: true,
+          });
         }
       }, { signal });
       actions.append(remove);
     }
     block.append(actions);
+    if (message) {
+      const statusLine = document.createElement('p');
+      statusLine.className = bad ? 'form-hint form-hint--danger' : 'form-hint';
+      statusLine.setAttribute('role', 'status');
+      statusLine.textContent = message;
+      block.append(statusLine);
+    }
   }
 
   paint({ ringSet: status.ringSet === true, url: '' });

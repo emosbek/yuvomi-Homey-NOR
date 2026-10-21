@@ -174,6 +174,13 @@ function publicPin(pin, live = {}) {
   };
 }
 
+function storeFailure(err) {
+  if (err?.code === 'EROFS' || err?.code === 'EACCES' || err?.code === 'EPERM') {
+    return new HttpError(503, 'store', 'The doorbell address could not be stored.');
+  }
+  return err;
+}
+
 function originAllowed(req) {
   const origin = req.headers.origin;
   if (!origin || typeof origin !== 'string') return false;
@@ -396,8 +403,9 @@ export function createHomeyHandler({
   return function homeyHandler(req, res) {
     handle(req, res).catch((err) => {
       const status = Number(err?.status) || 500;
+      const keep = err?.reason === 'upstream' || err?.reason === 'store';
       const reason = status >= 500
-        ? (err?.reason === 'upstream' ? 'upstream' : 'homey_unreachable')
+        ? (keep ? err.reason : 'homey_unreachable')
         : (err?.reason || 'invalid');
       const message = status >= 500
         ? (reason === 'upstream' ? 'Yuvomi did not answer.' : 'Homey module failed.')
@@ -473,14 +481,22 @@ export function createHomeyHandler({
     if (req.method === 'POST' && rest === '/ring-token') {
       requireAdmin(session, access);
       const token = randomBytes(32).toString('base64url');
-      await store.setRingToken(token);
+      try {
+        await store.setRingToken(token);
+      } catch (err) {
+        throw storeFailure(err);
+      }
       reply(req, res, 200, { token, ringSet: true });
       return;
     }
 
     if (req.method === 'DELETE' && rest === '/ring-token') {
       requireAdmin(session, access);
-      await store.clearRingToken();
+      try {
+        await store.clearRingToken();
+      } catch (err) {
+        throw storeFailure(err);
+      }
       reply(req, res, 200, { ringSet: false });
       return;
     }
