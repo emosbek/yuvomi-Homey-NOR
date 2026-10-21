@@ -76,8 +76,39 @@
   gap: var(--space-2);
 }
 
+.homey-zone {
+  margin: var(--space-4) 0 var(--space-2);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.homey-heading + .homey-zone {
+  margin-top: 0;
+}
+
 .homey-device + .homey-device {
   margin-top: var(--space-3);
+}
+
+.homey-device h3,
+.homey-pin__title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.homey-device h3 svg,
+.homey-pin__title svg {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex: 0 0 auto;
+}
+
+.homey-range {
+  flex: 1 1 8rem;
+  min-width: 8rem;
+  accent-color: var(--active-module-accent, var(--color-accent));
 }
 
 #homey-filter {

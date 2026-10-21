@@ -7,6 +7,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { inspectAddress } from '../sidecar/guard.js';
+import { normalizeDevices, normalizeZones, withZoneNames } from '../sidecar/homey-client.js';
 import { createHomeyServer } from '../sidecar/server.js';
 import { createStore } from '../sidecar/store.js';
 import { createGateway } from '../gateway.js';
@@ -69,6 +70,46 @@ function admin(res) {
     permissions: { admin: true, modules: { 'ext:homey': 'write' } },
   }));
 }
+
+test('a Homey device list keeps rooms and only controls that can be set', () => {
+  const devices = normalizeDevices({
+    lamp: {
+      id: 'lamp',
+      name: 'Taklampe',
+      class: 'Light',
+      zone: 'zone-stue',
+      capabilities: ['measure_power', 'dim', 'onoff'],
+      capabilitiesObj: {
+        onoff: { setable: true, type: 'boolean', title: { nb: 'På', en: 'On' }, value: false },
+        dim: { setable: true, type: 'number', title: 'Dim', min: 0, max: 1, step: 0.01, value: 0.4, units: '%' },
+        measure_power: { setable: false, type: 'number', title: 'Effekt' },
+      },
+    },
+    sensor: {
+      id: 'sensor',
+      name: 'Termometer',
+      class: 'sensor',
+      zone: 'zone-gang',
+      capabilities: ['measure_temperature'],
+      capabilitiesObj: {
+        measure_temperature: { setable: false, type: 'number', title: 'Temperatur' },
+      },
+    },
+  });
+  const named = withZoneNames(devices, normalizeZones({
+    'zone-stue': { id: 'zone-stue', name: 'Stue' },
+    'zone-gang': { id: 'zone-gang', name: 'Gang' },
+  }));
+  assert.equal(named.length, 1);
+  assert.equal(named[0].zone, 'Stue');
+  assert.equal(named[0].deviceClass, 'light');
+  assert.equal(named[0].zoneId, undefined);
+  assert.deepEqual(named[0].capabilities.map((cap) => cap.id), ['onoff', 'dim']);
+  assert.equal(named[0].capabilities[0].title, 'På');
+  assert.equal(named[0].capabilities[1].min, 0);
+  assert.equal(named[0].capabilities[1].max, 1);
+  assert.equal(named[0].capabilities[1].step, 0.01);
+});
 
 test('guard allows a LAN address and rejects metadata, loopback and tricks', async () => {
   const lookupImpl = async (host) => {
@@ -149,7 +190,8 @@ test('sidecar pins a device, toggles it, triggers a flow and a webhook', async (
           lamp: {
             id: 'lamp',
             name: 'Taklampe',
-            zoneName: 'Stue',
+            class: 'light',
+            zone: 'zone-stue',
             capabilities: ['onoff', 'dim', 'button'],
             capabilitiesObj: {
               onoff: { value: homeyState.onoff, setable: true, type: 'boolean', title: 'På' },
@@ -159,6 +201,11 @@ test('sidecar pins a device, toggles it, triggers a flow and a webhook', async (
             },
           },
         }));
+        return;
+      }
+      if (url.pathname === '/api/manager/zones/zone/') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ 'zone-stue': { id: 'zone-stue', name: 'Stue' } }));
         return;
       }
       if (req.method === 'PUT' && url.pathname === '/api/manager/devices/device/lamp/capability/onoff') {
@@ -241,6 +288,8 @@ test('sidecar pins a device, toggles it, triggers a flow and a webhook', async (
     const catalog = await call(base, '/api/extensions/homey/catalog', { cookie: jar });
     assert.equal(catalog.status, 200);
     assert.equal(catalog.body.devices[0].name, 'Taklampe');
+    assert.equal(catalog.body.devices[0].zone, 'Stue');
+    assert.equal(catalog.body.devices[0].deviceClass, 'light');
     assert.deepEqual(catalog.body.devices[0].capabilities.map((cap) => cap.id), ['onoff', 'dim']);
     assert.equal(catalog.body.flows[0].name, 'God natt');
     assert.equal(catalog.body.warning, null);

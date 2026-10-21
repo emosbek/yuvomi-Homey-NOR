@@ -9,6 +9,29 @@ function paintIcons(root) {
   if (window.lucide) window.lucide.createIcons({ el: root });
 }
 
+function deviceIcon(deviceClass) {
+  return {
+    light: 'lightbulb',
+    socket: 'plug',
+    thermostat: 'thermometer',
+    lock: 'lock',
+    windowcoverings: 'blinds',
+    speaker: 'speaker',
+    fan: 'fan',
+    heater: 'flame',
+    doorbell: 'bell',
+    sensor: 'activity',
+    tv: 'tv',
+    button: 'circle',
+  }[deviceClass] || '';
+}
+
+function pinIcon(pin) {
+  if (pin.kind === 'flow') return 'workflow';
+  if (pin.kind === 'webhook') return 'webhook';
+  return deviceIcon(pin.deviceClass);
+}
+
 function valueLabel(pin) {
   if (pin.unavailable) return t('extensions.homey.page.unavailable');
   if (typeof pin.value === 'boolean') {
@@ -16,6 +39,24 @@ function valueLabel(pin) {
   }
   if (pin.value == null || pin.value === '') return '';
   return String(pin.value);
+}
+
+function isDimPercent(cap) {
+  return (cap.id === 'dim' || String(cap.id).startsWith('dim.')) && cap.min === 0 && cap.max === 1;
+}
+
+function formatControlValue(cap, raw) {
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return String(raw ?? '');
+  if (isDimPercent(cap)) return `${Math.round(value * 100)} %`;
+  const units = cap.units ? ` ${cap.units}` : '';
+  const step = Number(cap.step);
+  if (Number.isFinite(step) && step >= 1) return `${Math.round(value)}${units}`;
+  if (Number.isFinite(step) && step > 0 && step < 1) {
+    const digits = Math.min(2, (String(step).split('.')[1] || '').length || 2);
+    return `${value.toFixed(digits)}${units}`;
+  }
+  return `${value}${units}`;
 }
 
 function shell() {
@@ -97,7 +138,17 @@ export async function render(container, context) {
     const value = document.createElement('span');
     value.className = 'homey-pin__value';
     value.textContent = valueLabel(pin);
-    press.append(label, detail, value);
+    const titleRow = document.createElement('span');
+    titleRow.className = 'homey-pin__title';
+    const iconName = pinIcon(pin);
+    if (iconName) {
+      const icon = document.createElement('i');
+      icon.dataset.lucide = iconName;
+      icon.setAttribute('aria-hidden', 'true');
+      titleRow.append(icon);
+    }
+    titleRow.append(label);
+    press.append(titleRow, detail, value);
     press.addEventListener('click', () => activate(pin, press), { signal });
     card.append(press);
     if (access === 'write') {
@@ -148,6 +199,18 @@ export async function render(container, context) {
   }
 
   function catalogControl(cap) {
+    if (cap.type === 'number' && Number.isFinite(cap.min) && Number.isFinite(cap.max)) {
+      const input = document.createElement('input');
+      input.className = 'homey-range';
+      input.type = 'range';
+      input.min = String(cap.min);
+      input.max = String(cap.max);
+      input.step = String(cap.step ?? (cap.max - cap.min > 5 ? 1 : 0.01));
+      input.setAttribute('aria-label', cap.title || t('extensions.homey.page.value'));
+      if (typeof cap.value === 'number') input.value = String(cap.value);
+      if (cap.units) input.dataset.homeyUnits = cap.units;
+      return input;
+    }
     if (cap.type === 'number') {
       const input = document.createElement('input');
       input.className = 'form-input';
@@ -188,14 +251,15 @@ export async function render(container, context) {
       detail,
       deviceId: device.id,
       capabilityId: cap.id,
+      deviceClass: device.deviceClass || '',
     };
     if (cap.type === 'boolean' || cap.id === 'onoff') return { ...base, mode: 'toggle' };
     if (cap.type === 'button' || cap.id === 'button') return { ...base, mode: 'set', value: true };
     if (!control) return { ...base, mode: 'set', value: true };
-    if (control.type === 'number') {
+    if (control.type === 'number' || control.type === 'range') {
       const value = Number(control.value);
       if (!Number.isFinite(value)) return null;
-      return { ...base, mode: 'set', value, detail: `${detail} · ${value}` };
+      return { ...base, mode: 'set', value, detail: `${detail} · ${formatControlValue(cap, value)}` };
     }
     const value = control.value;
     if (!value) return null;
@@ -229,15 +293,15 @@ export async function render(container, context) {
     add.append(list);
 
     const groups = [
-      [t('extensions.homey.page.devices'), catalog.devices || [], 'device'],
       [t('extensions.homey.page.flows'), catalog.flows || [], 'flow'],
       [t('extensions.homey.page.advancedFlows'), catalog.advancedFlows || [], 'advanced'],
     ];
+    appendDevices(list, catalog.devices || []);
     for (const [title, items, kind] of groups) {
       if (!items.length) continue;
       const block = document.createElement('section');
       block.append(heading('h3', 'homey-heading', title));
-      for (const item of items) block.append(kind === 'device' ? deviceCard(item) : flowCard(item, kind === 'advanced'));
+      for (const item of items) block.append(flowCard(item, kind === 'advanced'));
       list.append(block);
     }
     list.append(webhookCard());
@@ -249,21 +313,66 @@ export async function render(container, context) {
         const haystack = card.textContent.toLowerCase();
         card.hidden = Boolean(query) && !haystack.includes(query);
       }
+      for (const zoneHeading of list.querySelectorAll('.homey-zone')) {
+        let sibling = zoneHeading.nextElementSibling;
+        let visible = false;
+        while (sibling && !sibling.classList.contains('homey-zone')) {
+          if (sibling.matches('[data-homey-item]') && !sibling.hidden) visible = true;
+          sibling = sibling.nextElementSibling;
+        }
+        zoneHeading.hidden = Boolean(query) && !visible;
+      }
+      for (const section of list.querySelectorAll('section')) {
+        const headingEl = section.querySelector(':scope > .homey-heading');
+        const cards = section.querySelectorAll('[data-homey-item]');
+        if (headingEl) {
+          headingEl.hidden = Boolean(query) && ![...cards].some((card) => !card.hidden);
+        }
+      }
     }, { signal });
     refresh.addEventListener('click', () => loadCatalog().catch(fail), { signal });
+  }
+
+  function appendDevices(list, devices) {
+    if (!devices.length) return;
+    const block = document.createElement('section');
+    block.append(heading('h3', 'homey-heading', t('extensions.homey.page.devices')));
+    const grouped = new Map();
+    const none = t('extensions.homey.page.noZone');
+    for (const device of [...devices].sort((a, b) => a.name.localeCompare(b.name, 'nb'))) {
+      const zone = device.zone || none;
+      if (!grouped.has(zone)) grouped.set(zone, []);
+      grouped.get(zone).push(device);
+    }
+    const names = [...grouped.keys()].sort((a, b) => {
+      if (a === none) return 1;
+      if (b === none) return -1;
+      return a.localeCompare(b, 'nb');
+    });
+    for (const name of names) {
+      const zoneHeading = document.createElement('h4');
+      zoneHeading.className = 'homey-zone';
+      zoneHeading.textContent = name;
+      block.append(zoneHeading);
+      for (const device of grouped.get(name)) block.append(deviceCard(device));
+    }
+    list.append(block);
   }
 
   function deviceCard(device) {
     const card = document.createElement('article');
     card.className = 'card card--padded homey-device';
     card.dataset.homeyItem = 'device';
-    card.append(heading('h3', null, device.name));
-    if (device.zone) {
-      const zone = document.createElement('p');
-      zone.className = 'form-hint';
-      zone.textContent = device.zone;
-      card.append(zone);
+    const title = document.createElement('h3');
+    const iconName = deviceIcon(device.deviceClass);
+    if (iconName) {
+      const icon = document.createElement('i');
+      icon.dataset.lucide = iconName;
+      icon.setAttribute('aria-hidden', 'true');
+      title.append(icon);
     }
+    title.append(document.createTextNode(device.name));
+    card.append(title);
     const rows = document.createElement('ul');
     rows.className = 'homey-caps';
     for (const cap of device.capabilities || []) {
@@ -289,7 +398,19 @@ export async function render(container, context) {
         }
       }, { signal });
       row.append(name);
-      if (control) row.append(control);
+      if (control) {
+        row.append(control);
+        if (control.type === 'range') {
+          const readout = document.createElement('span');
+          readout.className = 'homey-pin__value';
+          const paint = () => {
+            readout.textContent = formatControlValue(cap, control.value);
+          };
+          paint();
+          control.addEventListener('input', paint, { signal });
+          row.append(readout);
+        }
+      }
       row.append(addButton);
       rows.append(row);
     }

@@ -113,13 +113,38 @@ function asList(data) {
   return [];
 }
 
+function text(value, fallback = '') {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  if (value && typeof value === 'object') {
+    for (const key of ['nb', 'no', 'nn', 'en', 'de']) {
+      if (typeof value[key] === 'string' && value[key]) return value[key];
+    }
+    const first = Object.values(value).find((item) => typeof item === 'string' && item);
+    if (typeof first === 'string') return first;
+  }
+  return fallback;
+}
+
+function finite(value) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function capabilityRank(id) {
+  if (id === 'onoff') return 0;
+  if (id === 'button') return 1;
+  if (id === 'dim' || id.startsWith('dim.')) return 2;
+  return 3;
+}
+
 function capabilityList(device) {
   const obj = device.capabilitiesObj && typeof device.capabilitiesObj === 'object'
     ? device.capabilitiesObj
     : {};
   const ids = Array.isArray(device.capabilities) ? device.capabilities : Object.keys(obj);
   return ids.map((id) => {
-    const cap = obj[id] && typeof obj[id] === 'object' ? obj[id] : {};
+    const cap = obj[id] && typeof obj[id] === 'object' ? obj[id] : null;
+    if (!cap || cap.setable !== true) return null;
     const values = Array.isArray(cap.values)
       ? cap.values
         .map((entry) => {
@@ -128,7 +153,7 @@ function capabilityList(device) {
             return { id: String(entry), title: String(entry) };
           }
           if (typeof entry === 'object' && entry.id != null) {
-            return { id: String(entry.id), title: String(entry.title || entry.id) };
+            return { id: String(entry.id), title: text(entry.title, String(entry.id)) };
           }
           return null;
         })
@@ -137,14 +162,17 @@ function capabilityList(device) {
       : [];
     return {
       id: String(id),
-      title: String(cap.title || id),
+      title: text(cap.title, String(id)),
       type: String(cap.type || ''),
-      setable: cap.setable !== false,
       value: cap.value === undefined ? null : cap.value,
-      units: cap.units ? String(cap.units) : '',
+      units: text(cap.units),
+      min: finite(cap.min),
+      max: finite(cap.max),
+      step: finite(cap.step),
       values,
     };
-  }).filter((cap) => cap.setable && cap.id && cap.id.length <= 120);
+  }).filter((cap) => cap && cap.id && cap.id.length <= 120)
+    .sort((a, b) => capabilityRank(a.id) - capabilityRank(b.id) || a.title.localeCompare(b.title, 'nb'));
 }
 
 export function normalizeDevices(data) {
@@ -152,11 +180,32 @@ export function normalizeDevices(data) {
     .filter((device) => device && device.id)
     .map((device) => ({
       id: String(device.id),
-      name: String(device.name || device.id),
-      zone: String(device.zoneName || device.zone || ''),
+      name: text(device.name, String(device.id)),
+      zone: text(device.zoneName),
+      zoneId: typeof device.zone === 'string' ? device.zone : '',
+      deviceClass: typeof device.class === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(device.class)
+        ? device.class.toLowerCase()
+        : '',
       capabilities: capabilityList(device),
     }))
     .filter((device) => device.capabilities.length > 0);
+}
+
+export function normalizeZones(data) {
+  return asList(data)
+    .filter((zone) => zone && zone.id)
+    .map((zone) => ({
+      id: String(zone.id),
+      name: text(zone.name, String(zone.id)),
+    }));
+}
+
+export function withZoneNames(devices, zones) {
+  const names = new Map((zones || []).map((zone) => [zone.id, zone.name]));
+  return devices.map((device) => {
+    const { zoneId, ...rest } = device;
+    return { ...rest, zone: device.zone || names.get(zoneId) || '' };
+  });
 }
 
 export function normalizeFlows(data) {
@@ -178,6 +227,14 @@ export function createHomeyClient({ allowLoopback = false, lookupImpl } = {}) {
     async devices(address, token) {
       const data = await call(await targetFor(address), token, '/api/manager/devices/device/');
       return normalizeDevices(data);
+    },
+    async zones(address, token) {
+      try {
+        const data = await call(await targetFor(address), token, '/api/manager/zones/zone/');
+        return normalizeZones(data);
+      } catch {
+        return [];
+      }
     },
     async flows(address, token) {
       const data = await call(await targetFor(address), token, '/api/manager/flow/flow/');
