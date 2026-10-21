@@ -16,7 +16,9 @@ function phrases() {
       title: 'Es klingelt',
       body: 'Jemand ist an der Tür.',
       dismiss: 'Schließen',
-      testBody: 'Das ist ein Test der Karte und des Videos. Klingel und Gong werden nicht benutzt.',
+      testBody: 'Das ist ein Test der Karte und der Kamera. Klingel und Gong werden nicht benutzt.',
+      noPicture: 'Homey hat kein Bild von dieser Kamera.',
+      pictureError: 'Das Kamerabild kam nicht an.',
       streamError: 'Der Videostream hat nicht gestartet.',
     };
   }
@@ -25,7 +27,9 @@ function phrases() {
       title: 'Someone is ringing',
       body: 'There is someone at the door.',
       dismiss: 'Close',
-      testBody: 'This is a test of the card and the video. The doorbell and the chimes are not used.',
+      testBody: 'This is a test of the card and the camera. The doorbell and the chimes are not used.',
+      noPicture: 'Homey has no picture from this camera.',
+      pictureError: 'The camera picture did not arrive.',
       streamError: 'The video stream did not start.',
     };
   }
@@ -33,7 +37,9 @@ function phrases() {
     title: 'Noen ringer på',
     body: 'Det er noen ved døren.',
     dismiss: 'Lukk',
-    testBody: 'Dette er en test av kortet og videoen. Dørklokken og klokkene brukes ikke.',
+    testBody: 'Dette er en test av kortet og kameraet. Dørklokken og klokkene brukes ikke.',
+    noPicture: 'Homey har ikke et bilde fra dette kameraet.',
+    pictureError: 'Kamerabildet kom ikke.',
     streamError: 'Videostrømmen startet ikke.',
   };
 }
@@ -119,9 +125,12 @@ export function startDoorbellWatch() {
   let host = null;
   let shownId = '';
   let hideTimer = 0;
+  let frameTimer = 0;
 
   function hide() {
     clearTimeout(hideTimer);
+    clearInterval(frameTimer);
+    frameTimer = 0;
     host?.remove();
     host = null;
   }
@@ -142,15 +151,21 @@ export function startDoorbellWatch() {
       document.body.append(host);
     }
     const root = host.shadowRoot;
+    const fallback = alert.test
+      ? (alert.feed === 'none' ? copy.noPicture : copy.testBody)
+      : copy.body;
     root.getElementById('homey-doorbell-title').textContent = alert.title || copy.title;
-    root.getElementById('homey-doorbell-body').textContent = alert.body || (alert.test ? copy.testBody : copy.body);
+    root.getElementById('homey-doorbell-body').textContent = alert.body || fallback;
     root.getElementById('homey-doorbell-dismiss').textContent = copy.dismiss;
     const slot = root.getElementById('homey-doorbell-media');
     slot.replaceChildren();
+    clearInterval(frameTimer);
+    frameTimer = 0;
     if (alert.stream) {
       const src = `/api/extensions/homey/stream?id=${encodeURIComponent(alert.id)}`;
       const player = alert.streamKind === 'image' ? document.createElement('img') : document.createElement('video');
-      if (player.tagName === 'IMG') player.alt = '';
+      const picture = player.tagName === 'IMG';
+      if (picture) player.alt = '';
       else {
         player.autoplay = true;
         player.muted = true;
@@ -159,9 +174,21 @@ export function startDoorbellWatch() {
       }
       player.addEventListener('error', () => {
         const line = root.getElementById('homey-doorbell-body');
-        if (line) line.textContent = copy.streamError;
+        if (line) line.textContent = picture ? copy.pictureError : copy.streamError;
       });
-      player.src = src;
+      if (picture) {
+        player.addEventListener('load', () => {
+          const line = root.getElementById('homey-doorbell-body');
+          if (line && alert.test && alert.feed !== 'none') line.textContent = copy.testBody;
+        });
+        const paint = () => {
+          player.src = `${src}&t=${Date.now()}`;
+        };
+        paint();
+        frameTimer = setInterval(paint, 1000);
+      } else {
+        player.src = src;
+      }
       slot.append(player);
     }
     clearTimeout(hideTimer);

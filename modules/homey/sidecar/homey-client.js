@@ -208,6 +208,90 @@ export function withZoneNames(devices, zones) {
   });
 }
 
+const CAMERA_ID_RE = /^[A-Za-z0-9_-]{1,80}$/;
+const IMAGE_ID_RE = /^[A-Za-z0-9_.:-]{1,120}$/;
+const SNAPSHOT_HOST_RE = /^([A-Za-z0-9.-]{1,253})(?::([0-9]{1,5}))?$/;
+
+function imageIdOf(device) {
+  const direct = device?.cameraImage?.id;
+  if (typeof direct === 'string' && direct) return direct;
+  const images = Array.isArray(device?.images) ? device.images : [];
+  for (const image of images) {
+    const id = image?.imageObj?.id || image?.id;
+    if (typeof id === 'string' && id) return id;
+  }
+  return '';
+}
+
+function snapshotHost(settings) {
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return '';
+  for (const key of ['ip', 'address', 'host', 'hostname', 'camera_ip']) {
+    const value = settings[key];
+    if (typeof value !== 'string') continue;
+    const host = value.trim();
+    const match = SNAPSHOT_HOST_RE.exec(host);
+    if (!match) continue;
+    const port = match[2] ? Number(match[2]) : 80;
+    if (port < 1 || port > 65535) continue;
+    return host;
+  }
+  return '';
+}
+
+function cameraClass(device) {
+  return typeof device?.class === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(device.class)
+    ? device.class.toLowerCase()
+    : '';
+}
+
+function isCameraDevice(device) {
+  const kind = cameraClass(device);
+  return kind === 'doorbell' || kind === 'camera' || Boolean(imageIdOf(device));
+}
+
+/**
+ * Doorbells and cameras, including those with no setable control.
+ * The browser gets a name and whether a picture exists. It does not get the
+ * image address, the camera IP, or anything from device settings.
+ */
+export function normalizeCameras(data) {
+  return asList(data)
+    .filter((device) => device && device.id && isCameraDevice(device))
+    .map((device) => {
+      const id = String(device.id);
+      if (!CAMERA_ID_RE.test(id)) return null;
+      const kind = cameraClass(device);
+      return {
+        id,
+        name: text(device.name, id).slice(0, 120),
+        deviceClass: kind === 'doorbell' || kind === 'camera' ? kind : 'camera',
+        image: Boolean(imageIdOf(device)),
+        snapshot: Boolean(snapshotHost(device.settings)),
+      };
+    })
+    .filter(Boolean);
+}
+
+export function cameraSource(device) {
+  if (!device || !device.id || !CAMERA_ID_RE.test(String(device.id))) return null;
+  const imageId = imageIdOf(device);
+  const host = snapshotHost(device.settings);
+  return {
+    id: String(device.id),
+    imageId: IMAGE_ID_RE.test(imageId) ? imageId : '',
+    snapshotUrl: host ? `http://${host}/snap.jpeg` : '',
+  };
+}
+
+export function pickCamera(cameras) {
+  const usable = (cameras || []).filter((camera) => camera && (camera.image || camera.snapshot));
+  return usable.find((camera) => camera.deviceClass === 'doorbell')
+    || usable.find((camera) => /g6|entry|doorbell|dør|ring/i.test(camera.name || ''))
+    || usable.find((camera) => camera.deviceClass === 'camera')
+    || usable[0]
+    || null;
+}
+
 export function normalizeFlows(data) {
   return asList(data)
     .filter((flow) => flow && flow.id && flow.enabled !== false && flow.triggerable !== false)
@@ -227,6 +311,23 @@ export function createHomeyClient({ allowLoopback = false, lookupImpl } = {}) {
     async devices(address, token) {
       const data = await call(await targetFor(address), token, '/api/manager/devices/device/');
       return normalizeDevices(data);
+    },
+    async cameras(address, token) {
+      const data = await call(await targetFor(address), token, '/api/manager/devices/device/');
+      return normalizeCameras(data);
+    },
+    async camera(address, token, deviceId) {
+      const target = await targetFor(address);
+      try {
+        const data = await call(target, token, `/api/manager/devices/device/${encodeURIComponent(deviceId)}`);
+        const source = cameraSource(data);
+        if (source && (source.imageId || source.snapshotUrl)) return source;
+      } catch (err) {
+        if (err?.reason === 'homey_unauthorized') throw err;
+      }
+      const data = await call(target, token, '/api/manager/devices/device/');
+      const found = asList(data).find((device) => device && String(device.id) === String(deviceId));
+      return cameraSource(found);
     },
     async zones(address, token) {
       try {
