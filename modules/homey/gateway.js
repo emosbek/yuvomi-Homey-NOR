@@ -15,22 +15,26 @@
  * HOMEY_ALLOW_LOOPBACK set to 1 only for tests against a Homey on this machine
  */
 
+import { readFileSync } from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createHomeyHandler } from './sidecar/server.js';
 
+const ALERT_SOURCE = readFileSync(new URL('./alert.js', import.meta.url));
+
 const HOP = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'upgrade', 'transfer-encoding']);
-const ALERT_SCRIPT = '<script type="module" src="/api/v1/modules/assets/homey/alert.js"></script>';
+const ALERT_SCRIPT = '<script type="module" src="/homey-alert.js"></script>';
 const HTML_LIMIT = 2_000_000;
 
 function wantsDocument(req) {
   if (req.method !== 'GET') return false;
   const pathName = (req.url || '/').split('?')[0];
-  if (pathName.startsWith('/api/')) return false;
+  if (pathName.startsWith('/api/') || pathName === '/homey-alert.js') return false;
   const dest = String(req.headers['sec-fetch-dest'] || '');
+  if (dest && dest !== 'document' && dest !== 'empty') return false;
   if (dest === 'document') return true;
-  if (dest) return false;
+  if (pathName === '/' || pathName === '/index.html' || pathName.endsWith('.html')) return true;
   return String(req.headers.accept || '').includes('text/html');
 }
 
@@ -94,7 +98,7 @@ export function createGateway({
           return;
         }
         let html = Buffer.concat(chunks).toString('utf8');
-        if (html.includes('</body>') && !html.includes('/api/v1/modules/assets/homey/alert.js')) {
+        if (html.includes('</body>') && !html.includes('/homey-alert.js')) {
           html = html.replace('</body>', `${ALERT_SCRIPT}</body>`);
         }
         const body = Buffer.from(html);
@@ -122,6 +126,17 @@ export function createGateway({
   }
 
   const server = http.createServer((req, res) => {
+    const pathName = (req.url || '/').split('?')[0];
+    if (req.method === 'GET' && pathName === '/homey-alert.js') {
+      res.writeHead(200, {
+        'Content-Type': 'text/javascript; charset=utf-8',
+        'Cache-Control': 'no-cache',
+        'X-Content-Type-Options': 'nosniff',
+        'Content-Length': ALERT_SOURCE.length,
+      });
+      res.end(ALERT_SOURCE);
+      return;
+    }
     if (isHomey(req)) {
       homey(req, res);
       return;

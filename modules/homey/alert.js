@@ -1,21 +1,23 @@
 /**
- * Full-screen doorbell. The gateway adds this file to every Yuvomi page, so a
- * wall tablet that stays on the dashboard still hears a ring. The card sits
- * above the photo screensaver and leaves on its own after the server's timer.
+ * Full-screen doorbell. The gateway serves this file itself and adds it to
+ * every Yuvomi page. It has no imports: module files behind /api/v1 answer
+ * 401 until someone is signed in, and the card has to be waiting before that.
+ * A ring stays above the photo screensaver and leaves when the server's timer
+ * runs out.
  */
 
-import { t } from '/i18n.js';
-import { homeyApi } from './browser.js';
-
 const POLL_MS = 2000;
-const QUIET_MS = 15000;
+const QUIET_MS = 4000;
 
-function text(key, fallback) {
-  try {
-    const value = t(key);
-    if (value && value !== key) return value;
-  } catch { /* locales are not ready yet */ }
-  return fallback;
+function phrases() {
+  const lang = String(document.documentElement.lang || navigator.language || 'nb').toLowerCase();
+  if (lang.startsWith('de')) {
+    return { title: 'Es klingelt', body: 'Jemand ist an der Tür.', dismiss: 'Schließen' };
+  }
+  if (lang.startsWith('en')) {
+    return { title: 'Someone is ringing', body: 'There is someone at the door.', dismiss: 'Close' };
+  }
+  return { title: 'Noen ringer på', body: 'Det er noen ved døren.', dismiss: 'Lukk' };
 }
 
 function beep() {
@@ -39,6 +41,7 @@ function beep() {
 }
 
 function overlay() {
+  const copy = phrases();
   const host = document.createElement('div');
   host.id = 'homey-doorbell';
   host.style.cssText = 'position:fixed;inset:0;z-index:110000;';
@@ -63,6 +66,7 @@ function overlay() {
   const dismiss = document.createElement('button');
   dismiss.type = 'button';
   dismiss.id = 'homey-doorbell-dismiss';
+  dismiss.textContent = copy.dismiss;
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 24 24');
   svg.setAttribute('fill', 'none');
@@ -105,6 +109,7 @@ export function startDoorbellWatch() {
 
   function show(alert) {
     shownId = alert.id;
+    const copy = phrases();
     if (!host) {
       host = overlay();
       host.shadowRoot.getElementById('homey-doorbell-dismiss').addEventListener('click', hide);
@@ -112,26 +117,28 @@ export function startDoorbellWatch() {
       document.body.append(host);
     }
     const root = host.shadowRoot;
-    root.getElementById('homey-doorbell-title').textContent = alert.title
-      || text('extensions.homey.alert.title', 'Noen ringer på');
-    root.getElementById('homey-doorbell-body').textContent = alert.body
-      || text('extensions.homey.alert.body', 'Det er noen ved døren.');
-    root.getElementById('homey-doorbell-dismiss').textContent = text('extensions.homey.alert.dismiss', 'Lukk');
+    root.getElementById('homey-doorbell-title').textContent = alert.title || copy.title;
+    root.getElementById('homey-doorbell-body').textContent = alert.body || copy.body;
+    root.getElementById('homey-doorbell-dismiss').textContent = copy.dismiss;
     clearTimeout(hideTimer);
-    const wait = Math.max(0, Number(alert.remainingMs) || 0);
-    hideTimer = setTimeout(hide, wait);
+    hideTimer = setTimeout(hide, Math.max(0, Number(alert.remainingMs) || 0));
     beep();
   }
 
   async function poll() {
     try {
-      const data = await homeyApi('/alert');
+      const response = await fetch('/api/extensions/homey/alert', {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+      });
+      if (response.status === 401) return QUIET_MS;
+      if (!response.ok) return POLL_MS;
+      const data = await response.json();
       const alert = data?.alert;
-      if (alert && alert.id && alert.id !== shownId) show(alert);
+      if (alert?.id && alert.id !== shownId) show(alert);
       if (!alert) shownId = '';
       return POLL_MS;
-    } catch (err) {
-      if (err?.status === 401) return QUIET_MS;
+    } catch {
       return POLL_MS;
     }
   }
