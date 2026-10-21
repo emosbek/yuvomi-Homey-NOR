@@ -30,6 +30,16 @@ Det starter Yuvomi på port 3001 og portalen på port 3000.
 
 Nøkkelen skrives til `data/homey/state.json` med filrettigheter som bare eieren kan lese. Ingen rute sender den tilbake.
 
+## Ringeklokke
+
+På Homey-siden lager en administrator en ringeadresse. Den vises bare én gang. En Homey-flyt kaller den med GET når ringeklokken trykkes, for eksempel når UniFi Protect melder at noen har trykket på G6 Entry Pro:
+
+`http://192.168.1.24:3000/api/extensions/homey/ring?token=…`
+
+Nettbrettet som har Yuvomi åpen, legger et kort over hele skjermen, også over fotobildeskjermspareren. Kortet forsvinner av seg selv etter 30 sekunder. Et trykk eller Escape lukker det før det.
+
+Adressen er en nøkkel. Den som har den, kan utløse kortet. Veggmodus laster ikke moduler selv, men porten på Pi-en legger skriptet inn i Yuvomi-siden, så oversikten og veggen får kortet uten at nettbrettet står på Homey-siden.
+
 ## Hva en knapp kan gjøre
 
 - **Enhet:** slår av og på en boolsk evne, trykker en knapp-evne, eller sender en valgt verdi. Et tall med min og maks, som dimming, festes med en skyveknapp. Enhetene står samlet per rom. Kallet er `PUT /api/manager/devices/device/:id/capability/:capabilityId` med `{ "value": ... }`.

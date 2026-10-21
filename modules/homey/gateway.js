@@ -21,6 +21,18 @@ import { pathToFileURL } from 'node:url';
 import { createHomeyHandler } from './sidecar/server.js';
 
 const HOP = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'upgrade', 'transfer-encoding']);
+const ALERT_SCRIPT = '<script type="module" src="/api/v1/modules/assets/homey/alert.js"></script>';
+const HTML_LIMIT = 2_000_000;
+
+function wantsDocument(req) {
+  if (req.method !== 'GET') return false;
+  const pathName = (req.url || '/').split('?')[0];
+  if (pathName.startsWith('/api/')) return false;
+  const dest = String(req.headers['sec-fetch-dest'] || '');
+  if (dest === 'document') return true;
+  if (dest) return false;
+  return String(req.headers.accept || '').includes('text/html');
+}
 
 function splitOrigin(value) {
   const url = new URL(value);
@@ -51,6 +63,8 @@ export function createGateway({
 
   function proxy(req, res) {
     const headers = forwardHeaders(req.headers);
+    const inject = wantsDocument(req);
+    if (inject) delete headers['accept-encoding'];
     const preq = http.request({
       hostname: target.hostname,
       port: target.port,
@@ -58,9 +72,38 @@ export function createGateway({
       path: req.url,
       headers,
     }, (pres) => {
-      const responseHeaders = forwardHeaders(pres.headers);
-      res.writeHead(pres.statusCode || 502, responseHeaders);
-      pres.pipe(res);
+      const type = String(pres.headers['content-type'] || '');
+      const canInject = inject && pres.statusCode === 200 && type.includes('text/html');
+      if (!canInject) {
+        const responseHeaders = forwardHeaders(pres.headers);
+        res.writeHead(pres.statusCode || 502, responseHeaders);
+        pres.pipe(res);
+        return;
+      }
+      const chunks = [];
+      let size = 0;
+      let skipped = false;
+      pres.on('data', (chunk) => {
+        size += chunk.length;
+        if (size > HTML_LIMIT) skipped = true;
+        else chunks.push(chunk);
+      });
+      pres.on('end', () => {
+        if (skipped || res.writableEnded) {
+          res.destroy();
+          return;
+        }
+        let html = Buffer.concat(chunks).toString('utf8');
+        if (html.includes('</body>') && !html.includes('/api/v1/modules/assets/homey/alert.js')) {
+          html = html.replace('</body>', `${ALERT_SCRIPT}</body>`);
+        }
+        const body = Buffer.from(html);
+        const responseHeaders = forwardHeaders(pres.headers);
+        delete responseHeaders['content-encoding'];
+        responseHeaders['content-length'] = String(body.length);
+        res.writeHead(pres.statusCode || 200, responseHeaders);
+        res.end(body);
+      });
     });
     preq.on('error', () => {
       if (res.headersSent || res.writableEnded) {

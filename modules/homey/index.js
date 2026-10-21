@@ -3,6 +3,7 @@ import { esc } from '/utils/html.js';
 import { mountEmptyState } from '/utils/empty-state.js';
 import { renderPageBody, renderPageHeader, renderPageSection, renderPageTitle } from '/utils/page-layout.js';
 import { showToast } from '/utils/toast-show.js';
+import { startDoorbellWatch } from './alert.js';
 import { button, heading, homeyApi, mountConnectionForm } from './browser.js';
 
 function paintIcons(root) {
@@ -81,6 +82,7 @@ function shell() {
 }
 
 export async function render(container, context) {
+  startDoorbellWatch();
   const signal = context?.signal;
   container.replaceChildren();
   container.insertAdjacentHTML('beforeend', shell());

@@ -199,6 +199,39 @@ async function optionalList(fn) {
   }
 }
 
+const RING_MS = 30_000;
+const RING_LIMIT = 12;
+
+function cleanAlertText(value, max) {
+  return String(value ?? '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, max);
+}
+
+function readRaw(req, limit = 8192) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    req.on('data', (chunk) => {
+      size += chunk.length;
+      if (size > limit) {
+        reject(new HttpError(413, 'invalid', 'Body is too large.'));
+        req.destroy();
+      } else {
+        chunks.push(chunk);
+      }
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('error', () => reject(new HttpError(400, 'invalid', 'Body was not read.')));
+  });
+}
+
+function ringSecrets(req, url) {
+  const auth = String(req.headers.authorization || '');
+  const bearer = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
+  return [url.searchParams.get('token'), req.headers['x-homey-ring'], bearer]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+}
+
 export function createHomeyHandler({
   dataDir,
   yuvomiUrl,
@@ -206,6 +239,7 @@ export function createHomeyHandler({
   lookupImpl,
   fetchImpl,
   ttlMs,
+  now = Date.now,
 } = {}) {
   if (!dataDir) throw new Error('dataDir is required');
   if (!yuvomiUrl) throw new Error('yuvomiUrl is required');
@@ -214,6 +248,8 @@ export function createHomeyHandler({
   const homey = createHomeyClient({ allowLoopback, lookupImpl });
   const csrfTokens = new Map();
   const activateHits = new Map();
+  const ringHits = [];
+  let doorbell = null;
 
   function csrfFor(cookie) {
     const key = sessionKey(cookie);
@@ -256,12 +292,60 @@ export function createHomeyHandler({
     });
   }
 
-  async function requireSession(req) {
+  async function requireSession(req, { allowNone = false } = {}) {
     const session = await resolveSession(req.headers.cookie || '');
     if (!session) throw new HttpError(401, 'unauthorized', 'Unauthorized.');
     const access = moduleAccess(session);
-    if (access === 'none') throw new HttpError(403, 'forbidden', 'Forbidden.');
+    if (access === 'none' && !allowNone) throw new HttpError(403, 'forbidden', 'Forbidden.');
     return { session, access };
+  }
+
+  function currentDoorbell() {
+    if (!doorbell || doorbell.until <= now()) return null;
+    return {
+      id: doorbell.id,
+      title: doorbell.title,
+      body: doorbell.body,
+      remainingMs: doorbell.until - now(),
+    };
+  }
+
+  async function acceptRing(req, res, url) {
+    const expected = store.snapshot().ringToken;
+    if (!expected) throw new HttpError(409, 'ring_missing', 'No doorbell address has been created.');
+    const presented = ringSecrets(req, url);
+    if (!presented.some((value) => safeEqual(value, expected))) {
+      throw new HttpError(401, 'unauthorized', 'Unauthorized.');
+    }
+    const at = now();
+    const recent = ringHits.filter((stamp) => at - stamp < 60_000);
+    if (recent.length >= RING_LIMIT) throw new HttpError(429, 'limit', 'Too many rings.');
+    recent.push(at);
+    ringHits.length = 0;
+    ringHits.push(...recent);
+    let title = cleanAlertText(url.searchParams.get('text'), 80);
+    let body = '';
+    if (req.method === 'POST') {
+      const raw = await readRaw(req);
+      if (raw.trim()) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            title = cleanAlertText(parsed.title || parsed.name || parsed.message || title, 80);
+            body = cleanAlertText(parsed.body || parsed.text || '', 160);
+          }
+        } catch {
+          title = title || cleanAlertText(raw, 80);
+        }
+      }
+    }
+    doorbell = {
+      id: randomBytes(16).toString('hex'),
+      title,
+      body,
+      until: at + RING_MS,
+    };
+    send(res, 200, { ok: true });
   }
 
   function requireWrite(access) {
@@ -355,8 +439,15 @@ export function createHomeyHandler({
       return;
     }
 
-    const { session, access } = await requireSession(req);
     const rest = pathname.slice(PREFIX.length) || '/';
+    if ((req.method === 'GET' || req.method === 'POST') && rest === '/ring') {
+      await acceptRing(req, res, url);
+      return;
+    }
+
+    const { session, access } = await requireSession(req, {
+      allowNone: req.method === 'GET' && rest === '/alert',
+    });
     const mutating = req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE';
     if (mutating) requireCsrf(req);
     const body = mutating ? await readBody(req) : null;
@@ -367,9 +458,30 @@ export function createHomeyHandler({
         configured: connection.configured,
         address: connection.address,
         tokenSet: connection.tokenSet,
+        ringSet: connection.ringSet,
         access,
         admin: session.role === 'admin',
       });
+      return;
+    }
+
+    if (req.method === 'GET' && rest === '/alert') {
+      reply(req, res, 200, { alert: currentDoorbell() });
+      return;
+    }
+
+    if (req.method === 'POST' && rest === '/ring-token') {
+      requireAdmin(session, access);
+      const token = randomBytes(32).toString('base64url');
+      await store.setRingToken(token);
+      reply(req, res, 200, { token, ringSet: true });
+      return;
+    }
+
+    if (req.method === 'DELETE' && rest === '/ring-token') {
+      requireAdmin(session, access);
+      await store.clearRingToken();
+      reply(req, res, 200, { ringSet: false });
       return;
     }
 
