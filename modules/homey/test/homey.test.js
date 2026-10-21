@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, statSync } from 'node:fs';
+import { chmodSync, mkdtempSync, rmSync, statSync } from 'node:fs';
 import http from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -596,6 +596,31 @@ test('a doorbell ring stays up for thirty seconds and a locked tablet can see it
   }
 });
 
+test('a doorbell address reports when the data folder cannot be written', async () => {
+  const me = startMe((req, res) => admin(res));
+  const dir = mkdtempSync(path.join(tmpdir(), 'homey-ring-ro-'));
+  const meUrl = await listen(me.server);
+  const sidecar = createHomeyServer({ dataDir: dir, yuvomiUrl: meUrl, allowLoopback: true });
+  const base = await listen(sidecar);
+  try {
+    chmodSync(dir, 0o555);
+    const first = await call(base, '/api/extensions/homey/status', { cookie: 'yuvomi.sid=ok' });
+    const created = await call(base, '/api/extensions/homey/ring-token', {
+      method: 'POST',
+      cookie: `yuvomi.sid=ok; ${first.cookie}`,
+      csrf: first.body.csrfToken,
+      json: {},
+    });
+    assert.equal(created.status, 503, JSON.stringify(created.body));
+    assert.equal(created.body.reason, 'store');
+  } finally {
+    chmodSync(dir, 0o700);
+    await close(sidecar);
+    await close(me.server);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('the gateway serves Homey itself and forwards everything else', async () => {
   const seen = [];
   const upstream = http.createServer((req, res) => {
@@ -634,6 +659,15 @@ test('the gateway serves Homey itself and forwards everything else', async () =>
     const status = await call(base, '/api/extensions/homey/status', { cookie: 'yuvomi.sid=ok' });
     assert.equal(status.status, 200);
     assert.equal(status.body.configured, false);
+    const created = await call(base, '/api/extensions/homey/ring-token', {
+      method: 'POST',
+      cookie: `yuvomi.sid=ok; ${status.cookie}`,
+      csrf: status.body.csrfToken,
+      json: {},
+    });
+    assert.equal(created.status, 200, JSON.stringify(created.body));
+    assert.equal(typeof created.body.token, 'string');
+    assert.equal(created.body.token.length > 20, true);
   } finally {
     await close(gateway);
     await close(upstream);
