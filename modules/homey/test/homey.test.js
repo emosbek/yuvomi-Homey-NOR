@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { inspectAddress } from '../sidecar/guard.js';
+import { inspectAddress, inspectStreamUrl } from '../sidecar/guard.js';
 import { normalizeDevices, normalizeZones, withZoneNames } from '../sidecar/homey-client.js';
 import { createHomeyServer } from '../sidecar/server.js';
 import { createStore } from '../sidecar/store.js';
@@ -140,6 +140,12 @@ test('guard allows a LAN address and rejects metadata, loopback and tricks', asy
   await assert.rejects(inspectAddress('http://2130706433', { lookupImpl }), { detail: 'loopback' });
   await assert.rejects(inspectAddress('http://2852039166', { lookupImpl }), { detail: 'blocked' });
   await assert.rejects(inspectAddress('http://missing.local', { lookupImpl }), { detail: 'resolve' });
+
+  const stream = await inspectStreamUrl('http://10.4.5.6/cam/live.mjpg?token=abc', { lookupImpl });
+  assert.equal(stream.path, '/cam/live.mjpg?token=abc');
+  assert.equal(stream.connectHost, '10.4.5.6');
+  await assert.rejects(inspectStreamUrl('rtsp://10.4.5.6/live', { lookupImpl }), { detail: 'scheme' });
+  await assert.rejects(inspectStreamUrl('http://user:pass@10.4.5.6/live', { lookupImpl }), { detail: 'userinfo' });
 });
 
 test('store keeps the API key on disk and out of the public connection', async () => {
@@ -591,6 +597,93 @@ test('a doorbell ring stays up for thirty seconds and a locked tablet can see it
     assert.equal(refused.body.reason, 'admin_required');
   } finally {
     await close(sidecar);
+    await close(me.server);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a test button shows the card and the camera stream without ringing', async () => {
+  const picture = Buffer.from('camera-frame');
+  const camera = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'image/jpeg' });
+    res.end(picture);
+  });
+  const me = startMe((req, res) => {
+    const cookie = String(req.headers.cookie || '');
+    if (!cookie.includes('yuvomi.sid=')) {
+      res.writeHead(401);
+      res.end('{}');
+      return;
+    }
+    const role = cookie.includes('yuvomi.sid=member') ? 'member' : 'admin';
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      user: { id: role === 'admin' ? 7 : 3, role, display_name: 'Noa' },
+      permissions: { modules: { 'ext:homey': 'write' } },
+    }));
+  });
+  const dir = mkdtempSync(path.join(tmpdir(), 'homey-stream-'));
+  const meUrl = await listen(me.server);
+  const cameraUrl = await listen(camera);
+  const sidecar = createHomeyServer({
+    dataDir: dir,
+    yuvomiUrl: meUrl,
+    allowLoopback: true,
+  });
+  const base = await listen(sidecar);
+  try {
+    const first = await call(base, '/api/extensions/homey/status', { cookie: 'yuvomi.sid=ok' });
+    const jar = `yuvomi.sid=ok; ${first.cookie}`;
+    const closed = await call(base, '/api/extensions/homey/stream', { cookie: jar });
+    assert.equal(closed.status, 404);
+
+    const saved = await call(base, '/api/extensions/homey/ring-stream', {
+      method: 'PUT',
+      cookie: jar,
+      csrf: first.body.csrfToken,
+      json: { url: `${cameraUrl}/cam/live.jpg`, kind: 'image' },
+    });
+    assert.equal(saved.status, 200, JSON.stringify(saved.body));
+    assert.equal(saved.body.streamSet, true);
+    const tested = await call(base, '/api/extensions/homey/ring-test', {
+      method: 'POST',
+      cookie: jar,
+      csrf: saved.body.csrfToken,
+    });
+    assert.equal(tested.status, 200, JSON.stringify(tested.body));
+    assert.equal(tested.body.alert.test, true);
+    assert.equal(tested.body.alert.stream, true);
+    assert.equal(tested.body.alert.streamKind, 'image');
+    assert.equal(tested.text.includes(cameraUrl), false);
+
+    const viewer = await call(base, '/api/extensions/homey/alert', { cookie: 'yuvomi.sid=member' });
+    assert.equal(viewer.status, 200, JSON.stringify(viewer.body));
+    assert.equal(viewer.body.alert.stream, true);
+    assert.equal(viewer.text.includes(cameraUrl), false);
+    const frame = await call(base, '/api/extensions/homey/stream', { cookie: 'yuvomi.sid=member' });
+    assert.equal(frame.status, 200, frame.text);
+    assert.equal(frame.text, 'camera-frame');
+
+    const status = await call(base, '/api/extensions/homey/status', { cookie: 'yuvomi.sid=member' });
+    assert.equal(status.body.streamUrl, undefined);
+    const refused = await call(base, '/api/extensions/homey/ring-test', {
+      method: 'POST',
+      cookie: `yuvomi.sid=member; ${status.cookie}`,
+      csrf: status.body.csrfToken,
+    });
+    assert.equal(refused.status, 403);
+    assert.equal(refused.body.reason, 'admin_required');
+    const rtsp = await call(base, '/api/extensions/homey/ring-stream', {
+      method: 'PUT',
+      cookie: jar,
+      csrf: saved.body.csrfToken,
+      json: { url: 'rtsp://10.1.1.1/live', kind: 'video' },
+    });
+    assert.equal(rtsp.status, 400);
+    assert.equal(rtsp.body.reason, 'address');
+  } finally {
+    await close(sidecar);
+    await close(camera);
     await close(me.server);
     rmSync(dir, { recursive: true, force: true });
   }

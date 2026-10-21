@@ -119,3 +119,27 @@ export async function inspectAddress(input, { allowLoopback = false, lookupImpl 
     port,
   };
 }
+
+/**
+ * A camera stream may have a path and a query. The host is checked the same
+ * way as a Homey address. The browser never sees this URL: the gateway fetches
+ * it and only while a doorbell card is on screen.
+ */
+export async function inspectStreamUrl(input, opts = {}) {
+  const raw = String(input || '').trim();
+  if (!raw || raw.length > 2000) throw new GuardError('blocked');
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new GuardError('scheme');
+  }
+  if (url.username || url.password) throw new GuardError('userinfo');
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new GuardError('scheme');
+  const checked = await inspectAddress(`${url.protocol}//${url.host}`, opts);
+  return {
+    ...checked,
+    path: `${url.pathname || '/'}${url.search}`,
+    hostHeader: url.host,
+  };
+}

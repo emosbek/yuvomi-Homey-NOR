@@ -5,8 +5,9 @@
 
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import http from 'node:http';
-import { createHomeyClient, withZoneNames } from './homey-client.js';
-import { inspectAddress } from './guard.js';
+import https from 'node:https';
+import { classifyNetworkError, createHomeyClient, withZoneNames } from './homey-client.js';
+import { inspectAddress, inspectStreamUrl } from './guard.js';
 import { createSessionResolver, moduleAccess } from './session.js';
 import { createStore } from './store.js';
 
@@ -256,6 +257,7 @@ export function createHomeyHandler({
   const csrfTokens = new Map();
   const activateHits = new Map();
   const ringHits = [];
+  const testHits = [];
   let doorbell = null;
 
   function csrfFor(cookie) {
@@ -309,12 +311,94 @@ export function createHomeyHandler({
 
   function currentDoorbell() {
     if (!doorbell || doorbell.until <= now()) return null;
+    const snap = store.snapshot();
     return {
       id: doorbell.id,
       title: doorbell.title,
       body: doorbell.body,
+      test: doorbell.test === true,
+      stream: Boolean(snap.streamUrl),
+      streamKind: snap.streamKind === 'image' ? 'image' : 'video',
       remainingMs: doorbell.until - now(),
     };
+  }
+
+  function proxyStream(target, res, until) {
+    const lib = target.protocol === 'https:' ? https : http;
+    return new Promise((resolve, reject) => {
+      const upstream = lib.request({
+        host: target.connectHost,
+        port: target.port,
+        method: 'GET',
+        path: target.path,
+        headers: { Host: target.hostHeader, Accept: '*/*' },
+        servername: target.hostname,
+        timeout: 8000,
+      }, (up) => {
+        const rejectBeforeHeaders = (status, reason, detail) => {
+          up.resume();
+          if (res.headersSent || res.writableEnded) {
+            res.destroy();
+            resolve();
+            return;
+          }
+          reject(new HttpError(status, reason, 'The video stream did not start.', detail));
+        };
+        if ((up.statusCode || 0) >= 300 && (up.statusCode || 0) < 400) {
+          rejectBeforeHeaders(502, 'stream');
+          return;
+        }
+        if ((up.statusCode || 0) < 200 || (up.statusCode || 0) >= 300) {
+          rejectBeforeHeaders(502, 'stream');
+          return;
+        }
+        const type = String(up.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+        const allowed = type.startsWith('video/')
+          || type === 'image/jpeg'
+          || type === 'image/jpg'
+          || type === 'image/png'
+          || type === 'image/webp'
+          || type === 'multipart/x-mixed-replace'
+          || type === 'application/octet-stream';
+        if (!allowed) {
+          rejectBeforeHeaders(502, 'stream', 'type');
+          return;
+        }
+        if (res.headersSent || res.writableEnded) {
+          up.resume();
+          resolve();
+          return;
+        }
+        res.writeHead(200, {
+          'Content-Type': up.headers['content-type'] || 'application/octet-stream',
+          'Cache-Control': 'no-store',
+          'X-Content-Type-Options': 'nosniff',
+        });
+        const stop = () => {
+          clearTimeout(timer);
+          upstream.destroy();
+          up.destroy();
+        };
+        const timer = setTimeout(stop, Math.max(0, until - now()) + 1000);
+        res.on('close', stop);
+        up.on('error', stop);
+        up.on('end', () => {
+          clearTimeout(timer);
+          resolve();
+        });
+        up.pipe(res);
+      });
+      upstream.on('timeout', () => {
+        upstream.destroy();
+        if (!res.headersSent) reject(new HttpError(502, 'stream', 'The video stream did not start.', 'timeout'));
+      });
+      upstream.on('error', (err) => {
+        if (!res.headersSent) {
+          reject(new HttpError(502, 'stream', 'The video stream did not start.', classifyNetworkError(err)));
+        }
+      });
+      upstream.end();
+    });
   }
 
   async function acceptRing(req, res, url) {
@@ -403,7 +487,7 @@ export function createHomeyHandler({
   return function homeyHandler(req, res) {
     handle(req, res).catch((err) => {
       const status = Number(err?.status) || 500;
-      const keep = err?.reason === 'upstream' || err?.reason === 'store';
+      const keep = err?.reason === 'upstream' || err?.reason === 'store' || err?.reason === 'stream';
       const reason = status >= 500
         ? (keep ? err.reason : 'homey_unreachable')
         : (err?.reason || 'invalid');
@@ -454,7 +538,7 @@ export function createHomeyHandler({
     }
 
     const { session, access } = await requireSession(req, {
-      allowNone: req.method === 'GET' && rest === '/alert',
+      allowNone: req.method === 'GET' && (rest === '/alert' || rest === '/stream'),
     });
     const mutating = req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE';
     if (mutating) requireCsrf(req);
@@ -462,14 +546,30 @@ export function createHomeyHandler({
 
     if (req.method === 'GET' && rest === '/status') {
       const connection = store.connection();
+      const snap = store.snapshot();
       reply(req, res, 200, {
         configured: connection.configured,
         address: connection.address,
         tokenSet: connection.tokenSet,
         ringSet: connection.ringSet,
+        streamSet: connection.streamSet,
+        streamKind: connection.streamKind,
+        ...(session.role === 'admin' ? { streamUrl: snap.streamUrl || '' } : {}),
         access,
         admin: session.role === 'admin',
       });
+      return;
+    }
+
+    if (req.method === 'GET' && rest === '/stream') {
+      const alert = currentDoorbell();
+      const snap = store.snapshot();
+      if (!alert || !snap.streamUrl) {
+        send(res, 404, { error: 'No stream is playing.', code: 404, reason: 'ring_missing' });
+        return;
+      }
+      const target = await inspectStreamUrl(snap.streamUrl, { allowLoopback, lookupImpl });
+      await proxyStream(target, res, alert.until);
       return;
     }
 
@@ -498,6 +598,48 @@ export function createHomeyHandler({
         throw storeFailure(err);
       }
       reply(req, res, 200, { ringSet: false });
+      return;
+    }
+
+    if (req.method === 'PUT' && rest === '/ring-stream') {
+      requireAdmin(session, access);
+      const urlValue = cleanAlertText(body?.url, 2000);
+      const kind = body?.kind === 'image' ? 'image' : 'video';
+      if (!urlValue) {
+        try {
+          await store.setStream({ url: null, kind: 'video' });
+        } catch (err) {
+          throw storeFailure(err);
+        }
+        reply(req, res, 200, { streamSet: false, streamKind: 'video', streamUrl: '' });
+        return;
+      }
+      await inspectStreamUrl(urlValue, { allowLoopback, lookupImpl });
+      try {
+        await store.setStream({ url: urlValue, kind });
+      } catch (err) {
+        throw storeFailure(err);
+      }
+      reply(req, res, 200, { streamSet: true, streamKind: kind, streamUrl: urlValue });
+      return;
+    }
+
+    if (req.method === 'POST' && rest === '/ring-test') {
+      requireAdmin(session, access);
+      const at = now();
+      const recent = testHits.filter((stamp) => at - stamp < 60_000);
+      if (recent.length >= RING_LIMIT) throw new HttpError(429, 'limit', 'Too many rings.');
+      recent.push(at);
+      testHits.length = 0;
+      testHits.push(...recent);
+      doorbell = {
+        id: randomBytes(16).toString('hex'),
+        title: 'Test',
+        body: '',
+        test: true,
+        until: at + RING_MS,
+      };
+      reply(req, res, 200, { ok: true, alert: currentDoorbell() });
       return;
     }
 

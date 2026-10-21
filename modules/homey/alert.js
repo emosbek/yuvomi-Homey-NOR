@@ -12,12 +12,30 @@ const QUIET_MS = 4000;
 function phrases() {
   const lang = String(document.documentElement.lang || navigator.language || 'nb').toLowerCase();
   if (lang.startsWith('de')) {
-    return { title: 'Es klingelt', body: 'Jemand ist an der Tür.', dismiss: 'Schließen' };
+    return {
+      title: 'Es klingelt',
+      body: 'Jemand ist an der Tür.',
+      dismiss: 'Schließen',
+      testBody: 'Das ist ein Test der Karte und des Videos. Klingel und Gong werden nicht benutzt.',
+      streamError: 'Der Videostream hat nicht gestartet.',
+    };
   }
   if (lang.startsWith('en')) {
-    return { title: 'Someone is ringing', body: 'There is someone at the door.', dismiss: 'Close' };
+    return {
+      title: 'Someone is ringing',
+      body: 'There is someone at the door.',
+      dismiss: 'Close',
+      testBody: 'This is a test of the card and the video. The doorbell and the chimes are not used.',
+      streamError: 'The video stream did not start.',
+    };
   }
-  return { title: 'Noen ringer på', body: 'Det er noen ved døren.', dismiss: 'Lukk' };
+  return {
+    title: 'Noen ringer på',
+    body: 'Det er noen ved døren.',
+    dismiss: 'Lukk',
+    testBody: 'Dette er en test av kortet og videoen. Dørklokken og klokkene brukes ikke.',
+    streamError: 'Videostrømmen startet ikke.',
+  };
 }
 
 function beep() {
@@ -49,6 +67,8 @@ function overlay() {
   const style = document.createElement('style');
   style.textContent = [
     '.scrim{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:1.5rem;background:rgba(8,18,28,.94);color:#fff;font:500 1.25rem/1.4 system-ui,sans-serif;text-align:center}',
+    '.stack{width:min(92vw,42rem)}',
+    'video,img{width:100%;max-height:46vh;object-fit:contain;border-radius:1rem;background:#000;margin:0 0 1rem}',
     'h1{margin:.75rem 0 .5rem;font-size:clamp(2.5rem,8vw,4.5rem);font-weight:650}',
     'p{margin:0 0 1.5rem;font-size:clamp(1.25rem,3vw,2rem)}',
     'button{font:inherit;font-size:1.25rem;padding:.85rem 1.6rem;border:0;border-radius:999px;background:#fff;color:#0B6E99;cursor:pointer}',
@@ -82,7 +102,10 @@ function overlay() {
     svg.append(path);
   }
   const stack = document.createElement('div');
-  stack.append(svg, title, body, dismiss);
+  stack.className = 'stack';
+  const media = document.createElement('div');
+  media.id = 'homey-doorbell-media';
+  stack.append(media, svg, title, body, dismiss);
   scrim.append(stack);
   root.append(style, scrim);
   return host;
@@ -113,13 +136,34 @@ export function startDoorbellWatch() {
     if (!host) {
       host = overlay();
       host.shadowRoot.getElementById('homey-doorbell-dismiss').addEventListener('click', hide);
-      host.addEventListener('click', hide);
+      host.shadowRoot.querySelector('.scrim').addEventListener('click', (event) => {
+        if (event.target === event.currentTarget) hide();
+      });
       document.body.append(host);
     }
     const root = host.shadowRoot;
     root.getElementById('homey-doorbell-title').textContent = alert.title || copy.title;
-    root.getElementById('homey-doorbell-body').textContent = alert.body || copy.body;
+    root.getElementById('homey-doorbell-body').textContent = alert.body || (alert.test ? copy.testBody : copy.body);
     root.getElementById('homey-doorbell-dismiss').textContent = copy.dismiss;
+    const slot = root.getElementById('homey-doorbell-media');
+    slot.replaceChildren();
+    if (alert.stream) {
+      const src = `/api/extensions/homey/stream?id=${encodeURIComponent(alert.id)}`;
+      const player = alert.streamKind === 'image' ? document.createElement('img') : document.createElement('video');
+      if (player.tagName === 'IMG') player.alt = '';
+      else {
+        player.autoplay = true;
+        player.muted = true;
+        player.playsInline = true;
+        player.setAttribute('playsinline', '');
+      }
+      player.addEventListener('error', () => {
+        const line = root.getElementById('homey-doorbell-body');
+        if (line) line.textContent = copy.streamError;
+      });
+      player.src = src;
+      slot.append(player);
+    }
     clearTimeout(hideTimer);
     hideTimer = setTimeout(hide, Math.max(0, Number(alert.remainingMs) || 0));
     beep();
