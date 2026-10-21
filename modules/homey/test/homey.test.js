@@ -7,7 +7,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { inspectAddress, inspectStreamUrl } from '../sidecar/guard.js';
-import { normalizeDevices, normalizeZones, withZoneNames } from '../sidecar/homey-client.js';
+import { normalizeCameras, normalizeDevices, normalizeZones, pickCamera, withZoneNames } from '../sidecar/homey-client.js';
 import { createHomeyServer } from '../sidecar/server.js';
 import { createStore } from '../sidecar/store.js';
 import { createGateway } from '../gateway.js';
@@ -109,6 +109,44 @@ test('a Homey device list keeps rooms and only controls that can be set', () => 
   assert.equal(named[0].capabilities[1].min, 0);
   assert.equal(named[0].capabilities[1].max, 1);
   assert.equal(named[0].capabilities[1].step, 0.01);
+});
+
+test('a doorbell without controls still counts as a camera and hides its address', () => {
+  const cameras = normalizeCameras({
+    bell: {
+      id: 'g6',
+      name: 'UniFi G6 Entry Pro',
+      class: 'doorbell',
+      cameraImage: { id: 'img-1', url: 'http://192.168.1.40/secret.jpg' },
+      settings: { ip: '192.168.1.40', password: 'secret-pass' },
+      capabilitiesObj: { alarm_generic: { setable: false, title: 'Ring' } },
+    },
+    hall: {
+      id: 'hallcam',
+      name: 'Gang',
+      class: 'camera',
+      images: [{ imageObj: { id: 'img-2', url: 'http://hidden.example/snap.jpg' } }],
+    },
+    lamp: {
+      id: 'lamp',
+      name: 'Taklampe',
+      class: 'light',
+      capabilitiesObj: { onoff: { setable: true, type: 'boolean', title: 'På' } },
+    },
+  });
+  assert.deepEqual(cameras.map((camera) => camera.id), ['g6', 'hallcam']);
+  assert.equal(cameras[0].deviceClass, 'doorbell');
+  assert.equal(cameras[0].image, true);
+  assert.equal(cameras[0].snapshot, true);
+  const leaked = JSON.stringify(cameras);
+  assert.equal(leaked.includes('192.168.1.40'), false);
+  assert.equal(leaked.includes('secret'), false);
+  assert.equal(leaked.includes('img-1'), false);
+  assert.equal(pickCamera(cameras).id, 'g6');
+  assert.equal(pickCamera([
+    { id: 'garage', name: 'Garasje', deviceClass: 'camera', image: true, snapshot: false },
+    { id: 'entry', name: 'G6 Pro Entry', deviceClass: 'camera', image: true, snapshot: false },
+  ]).id, 'entry');
 });
 
 test('guard allows a LAN address and rejects metadata, loopback and tricks', async () => {
@@ -684,6 +722,181 @@ test('a test button shows the card and the camera stream without ringing', async
   } finally {
     await close(sidecar);
     await close(camera);
+    await close(me.server);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the doorbell test shows the UniFi picture Homey already has', async () => {
+  const snapBytes = Buffer.from('snap-jpeg');
+  const homeyBytes = Buffer.from('homey-jpeg');
+  const seen = { snap: [], homey: [], decoy: 0 };
+  let snapStatus = 200;
+  let blank = false;
+  let snapHost = '127.0.0.1:9';
+  const snap = http.createServer((req, res) => {
+    seen.snap.push({ path: req.url, authorization: req.headers.authorization || '' });
+    if (snapStatus !== 200) {
+      res.writeHead(snapStatus, { 'Content-Type': 'text/plain' });
+      res.end('no');
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'image/jpeg' });
+    res.end(snapBytes);
+  });
+  const decoy = http.createServer((req, res) => {
+    seen.decoy += 1;
+    res.writeHead(200, { 'Content-Type': 'image/jpeg' });
+    res.end('url-frame');
+  });
+  const homey = http.createServer((req, res) => {
+    const url = new URL(req.url, 'http://127.0.0.1');
+    seen.homey.push({ path: url.pathname, authorization: req.headers.authorization || '' });
+    if (req.headers.authorization !== `Bearer ${TOKEN}`) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end('{}');
+      return;
+    }
+    const doorbell = blank
+      ? { id: 'g6', name: 'UniFi G6 Entry Pro', class: 'doorbell', settings: { password: 'secret-pass' } }
+      : {
+        id: 'g6',
+        name: 'UniFi G6 Entry Pro',
+        class: 'doorbell',
+        cameraImage: { id: 'img-1', url: 'http://192.168.1.40/secret.jpg' },
+        settings: { ip: snapHost, password: 'secret-pass' },
+      };
+    if (url.pathname === '/api/manager/devices/device/' || url.pathname === '/api/manager/devices/device/g6') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      const list = blank ? { g6: doorbell } : {
+        g6: doorbell,
+        hall: {
+          id: 'hallcam',
+          name: 'Gang',
+          class: 'camera',
+          images: [{ imageObj: { id: 'img-2', url: 'http://hidden.example/a.jpg' } }],
+        },
+        lamp: {
+          id: 'lamp',
+          name: 'Taklampe',
+          class: 'light',
+          capabilities: ['onoff'],
+          capabilitiesObj: { onoff: { setable: true, type: 'boolean', title: 'På', value: true } },
+        },
+      };
+      res.end(JSON.stringify(url.pathname.endsWith('/g6') ? doorbell : list));
+      return;
+    }
+    if (url.pathname === '/api/image/img-1') {
+      res.writeHead(200, { 'Content-Type': 'image/jpeg' });
+      res.end(homeyBytes);
+      return;
+    }
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('missing');
+  });
+  const me = startMe((req, res) => admin(res));
+  const dir = mkdtempSync(path.join(tmpdir(), 'homey-g6-'));
+  const meUrl = await listen(me.server);
+  const snapUrl = await listen(snap);
+  const decoyUrl = await listen(decoy);
+  const homeyUrl = await listen(homey);
+  snapHost = `127.0.0.1:${new URL(snapUrl).port}`;
+  const sidecar = createHomeyServer({ dataDir: dir, yuvomiUrl: meUrl, allowLoopback: true });
+  const base = await listen(sidecar);
+  try {
+    const first = await call(base, '/api/extensions/homey/status', { cookie: 'yuvomi.sid=ok' });
+    const jar = `yuvomi.sid=ok; ${first.cookie}`;
+    const saved = await call(base, '/api/extensions/homey/connection', {
+      method: 'PUT',
+      cookie: jar,
+      csrf: first.body.csrfToken,
+      json: { address: homeyUrl, token: TOKEN },
+    });
+    assert.equal(saved.status, 200, JSON.stringify(saved.body));
+    const listed = await call(base, '/api/extensions/homey/cameras', {
+      cookie: jar,
+      csrf: saved.body.csrfToken,
+    });
+    assert.equal(listed.status, 200, JSON.stringify(listed.body));
+    assert.deepEqual(listed.body.cameras.map((camera) => camera.id), ['g6', 'hallcam']);
+    assert.equal(listed.text.includes('192.168.1.40'), false);
+    assert.equal(listed.text.includes(snapHost), false);
+    assert.equal(listed.text.includes('secret'), false);
+    assert.equal(listed.text.includes('img-1'), false);
+    assert.equal(listed.text.includes(TOKEN), false);
+
+    const pasted = await call(base, '/api/extensions/homey/ring-stream', {
+      method: 'PUT',
+      cookie: jar,
+      csrf: listed.body.csrfToken,
+      json: { url: `${decoyUrl}/live.jpg`, kind: 'image' },
+    });
+    assert.equal(pasted.status, 200, JSON.stringify(pasted.body));
+    const tested = await call(base, '/api/extensions/homey/ring-test', {
+      method: 'POST',
+      cookie: jar,
+      csrf: pasted.body.csrfToken,
+      json: { cameraId: '' },
+    });
+    assert.equal(tested.status, 200, JSON.stringify(tested.body));
+    assert.equal(tested.body.feed, 'camera');
+    assert.equal(tested.body.alert.stream, true);
+    assert.equal(tested.body.alert.streamKind, 'image');
+    assert.equal(tested.body.alert.test, true);
+    assert.equal(tested.text.includes(TOKEN), false);
+    assert.equal(tested.text.includes(snapHost), false);
+    assert.equal(tested.text.includes('img-1'), false);
+    const frame = await call(base, '/api/extensions/homey/stream', { cookie: jar });
+    assert.equal(frame.status, 200, frame.text);
+    assert.equal(frame.text, 'snap-jpeg');
+    assert.equal(seen.decoy, 0);
+    assert.equal(seen.snap.every((hit) => hit.authorization === ''), true);
+    assert.equal(seen.homey.some((hit) => hit.path === '/api/image/img-1'), false);
+
+    snapStatus = 404;
+    const again = await call(base, '/api/extensions/homey/ring-test', {
+      method: 'POST',
+      cookie: jar,
+      csrf: tested.body.csrfToken,
+      json: {},
+    });
+    assert.equal(again.status, 200, JSON.stringify(again.body));
+    const before = seen.snap.length;
+    const fallback = await call(base, '/api/extensions/homey/stream', { cookie: jar });
+    assert.equal(fallback.status, 200, fallback.text);
+    assert.equal(fallback.text, 'homey-jpeg');
+    assert.equal(seen.snap.length, before + 1);
+    assert.equal(seen.snap.at(-1).authorization, '');
+    const imageHits = seen.homey.filter((hit) => hit.path === '/api/image/img-1');
+    assert.equal(imageHits.length, 1);
+    assert.equal(imageHits[0].authorization, `Bearer ${TOKEN}`);
+    const second = await call(base, '/api/extensions/homey/stream', { cookie: jar });
+    assert.equal(second.text, 'homey-jpeg');
+    assert.equal(seen.snap.length, before + 1);
+
+    blank = true;
+    const cleared = await call(base, '/api/extensions/homey/ring-stream', {
+      method: 'PUT',
+      cookie: jar,
+      csrf: again.body.csrfToken,
+      json: { url: '', kind: 'image' },
+    });
+    const quiet = await call(base, '/api/extensions/homey/ring-test', {
+      method: 'POST',
+      cookie: jar,
+      csrf: cleared.body.csrfToken,
+      json: { cameraId: '' },
+    });
+    assert.equal(quiet.status, 200, JSON.stringify(quiet.body));
+    assert.equal(quiet.body.feed, 'none');
+    assert.equal(quiet.body.alert.test, true);
+    assert.equal(quiet.body.alert.stream, false);
+  } finally {
+    await close(sidecar);
+    await close(homey);
+    await close(snap);
+    await close(decoy);
     await close(me.server);
     rmSync(dir, { recursive: true, force: true });
   }

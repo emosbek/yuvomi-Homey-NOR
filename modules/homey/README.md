@@ -38,7 +38,9 @@ På Homey-siden lager en administrator en ringeadresse. Den vises bare én gang.
 
 Nettbrettet som har Yuvomi åpen, legger et kort over hele skjermen, også over fotobildeskjermspareren. Kortet forsvinner av seg selv etter 30 sekunder. Et trykk på Lukk, eller Escape, lukker det før det.
 
-Under ringeklokken kan du lime inn en videostrøm (http eller https, MJPEG eller MP4) og trykke «Test varsel og video». Kortet kommer opp med bildet, uten at ringeklokken eller klokkene brukes. Samme strøm vises også når Homey-flyten kaller ringeadressen. RTSP kan ikke spilles i nettleseren. Strømmen hentes bare mens kortet er oppe, og adressen sendes ikke til nettleseren.
+Under ringeklokken velger du kamera, eller lar listen stå på automatisk. Da brukes dørklokken i Homey, for eksempel UniFi G6 Entry Pro. «Test varsel og bilde» viser kortet med det bildet, uten at ringeklokken eller klokkene brukes. Bildet oppdateres mens kortet er oppe. Samme bilde vises når Homey-flyten kaller ringeadressen.
+
+Bildet hentes fra Homey med API-nøkkelen som allerede er lagret. Hvis enheten har en IP-adresse, prøves kameraets eget øyeblikksbilde først. Ellers brukes bildet UniFi Protect har lagret i Homey. Det bildet kan være noen sekunder gammelt. RTSP kan ikke spilles i nettleseren. En annen http- eller https-adresse kan limes inn hvis Homey ikke har et bilde. Adressen, kameraets IP og API-nøkkelen sendes ikke til nettleseren, og bildet hentes bare mens kortet er oppe.
 
 Adressen er en nøkkel. Den som har den, kan utløse kortet. Veggmodus laster ikke moduler selv. Porten serverer derfor vakt-skriptet selv på `/homey-alert.js` og legger det inn i hver Yuvomi-side, også før innlogging. Skriptet venter til nettbrettet er logget inn, og legger kortet over oversikten, veggen og fotobildeskjermspareren.
 

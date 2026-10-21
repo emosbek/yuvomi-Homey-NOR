@@ -210,8 +210,14 @@ function mountRing(container, { status, signal, csrf, setCsrf }) {
   container.append(block);
   let streamUrl = status.streamUrl || '';
   let streamKind = status.streamKind === 'image' ? 'image' : 'video';
+  let cameraId = status.cameraId || '';
+  let cameras = [];
+  let camerasReady = false;
+  let locked = false;
+  let shownUrl = '';
 
   function paint({ ringSet, url, message = '', bad = false, busy = false, testing = false }) {
+    shownUrl = url || '';
     block.replaceChildren();
     block.append(heading('h3', 'homey-heading', t('extensions.homey.settings.ringHeading')));
     const intro = document.createElement('p');
@@ -305,6 +311,42 @@ function mountRing(container, { status, signal, csrf, setCsrf }) {
     }
     block.append(actions);
 
+    const cameraWrap = document.createElement('div');
+    cameraWrap.className = 'form-group';
+    const cameraLabel = document.createElement('label');
+    cameraLabel.className = 'form-label';
+    cameraLabel.htmlFor = 'homey-camera';
+    cameraLabel.textContent = t('extensions.homey.settings.camera');
+    const camera = document.createElement('select');
+    camera.className = 'form-input';
+    camera.id = 'homey-camera';
+    const auto = document.createElement('option');
+    auto.value = '';
+    auto.textContent = t('extensions.homey.settings.cameraAuto');
+    auto.selected = cameraId === '';
+    camera.append(auto);
+    for (const item of cameras) {
+      if (!item?.id) continue;
+      const option = document.createElement('option');
+      option.value = item.id;
+      option.textContent = item.name || item.id;
+      option.selected = item.id === cameraId;
+      camera.append(option);
+    }
+    if (cameraId && !cameras.some((item) => item?.id === cameraId)) {
+      const option = document.createElement('option');
+      option.value = cameraId;
+      option.textContent = cameraId;
+      option.selected = true;
+      camera.append(option);
+    }
+    const cameraHint = document.createElement('p');
+    cameraHint.className = 'form-hint';
+    cameraHint.textContent = camerasReady && status.configured && cameras.length === 0
+      ? t('extensions.homey.settings.cameraEmpty')
+      : t('extensions.homey.settings.cameraHint');
+    cameraWrap.append(cameraLabel, camera, cameraHint);
+
     const stream = field(t('extensions.homey.settings.stream'), {
       id: 'homey-stream-url',
       hint: t('extensions.homey.settings.streamHint'),
@@ -333,8 +375,11 @@ function mountRing(container, { status, signal, csrf, setCsrf }) {
     test.addEventListener('click', async () => {
       const nextUrl = stream.input.value.trim();
       const nextKind = kind.value === 'image' ? 'image' : 'video';
+      const selected = camera.value;
       streamUrl = nextUrl;
       streamKind = nextKind;
+      cameraId = selected;
+      locked = true;
       paint({ ringSet, url, testing: true });
       try {
         const saved = await homeyApi('/ring-stream', {
@@ -345,10 +390,21 @@ function mountRing(container, { status, signal, csrf, setCsrf }) {
         });
         if (signal?.aborted) return;
         setCsrf(saved.csrfToken || csrf());
-        const data = await homeyApi('/ring-test', { method: 'POST', csrf: csrf(), signal, body: {} });
+        const data = await homeyApi('/ring-test', {
+          method: 'POST',
+          csrf: csrf(),
+          signal,
+          body: { cameraId: selected },
+        });
         if (signal?.aborted) return;
         setCsrf(data.csrfToken || csrf());
-        paint({ ringSet, url, message: t('extensions.homey.settings.ringTested') });
+        const feed = data.alert?.feed || data.feed;
+        const tested = feed === 'none'
+          ? t('extensions.homey.settings.ringTestedNone')
+          : (feed === 'url'
+            ? t('extensions.homey.settings.ringTestedUrl')
+            : t('extensions.homey.settings.ringTested'));
+        paint({ ringSet, url, message: tested, bad: feed === 'none' });
       } catch (err) {
         if (signal?.aborted || err?.name === 'AbortError') return;
         if (err?.csrfToken) setCsrf(err.csrfToken);
@@ -361,7 +417,7 @@ function mountRing(container, { status, signal, csrf, setCsrf }) {
     const testRow = document.createElement('div');
     testRow.className = 'homey-actions';
     testRow.append(kind, test);
-    block.append(stream.wrap, testRow);
+    block.append(cameraWrap, stream.wrap, testRow);
 
     if (message) {
       const statusLine = document.createElement('p');
@@ -373,4 +429,21 @@ function mountRing(container, { status, signal, csrf, setCsrf }) {
   }
 
   paint({ ringSet: status.ringSet === true, url: '' });
+  if (!status.configured) return;
+  homeyApi('/cameras', { signal }).then((data) => {
+    if (signal?.aborted || locked) return;
+    cameras = Array.isArray(data.cameras) ? data.cameras : [];
+    camerasReady = true;
+    if (!cameraId && data.cameraId) cameraId = data.cameraId;
+    paint({ ringSet: status.ringSet === true, url: shownUrl });
+  }).catch((err) => {
+    if (signal?.aborted || locked) return;
+    camerasReady = true;
+    paint({
+      ringSet: status.ringSet === true,
+      url: shownUrl,
+      message: err?.message || reasonMessage(err?.reason, err?.detail),
+      bad: true,
+    });
+  });
 }

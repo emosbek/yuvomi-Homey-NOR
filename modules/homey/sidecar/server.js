@@ -6,7 +6,7 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import http from 'node:http';
 import https from 'node:https';
-import { classifyNetworkError, createHomeyClient, withZoneNames } from './homey-client.js';
+import { classifyNetworkError, createHomeyClient, pickCamera, withZoneNames } from './homey-client.js';
 import { inspectAddress, inspectStreamUrl } from './guard.js';
 import { createSessionResolver, moduleAccess } from './session.js';
 import { createStore } from './store.js';
@@ -311,38 +311,86 @@ export function createHomeyHandler({
 
   function currentDoorbell() {
     if (!doorbell || doorbell.until <= now()) return null;
-    const snap = store.snapshot();
+    const feed = doorbell.feed === 'camera' || doorbell.feed === 'url' ? doorbell.feed : 'none';
     return {
       id: doorbell.id,
       title: doorbell.title,
       body: doorbell.body,
       test: doorbell.test === true,
-      stream: Boolean(snap.streamUrl),
-      streamKind: snap.streamKind === 'image' ? 'image' : 'video',
+      stream: feed !== 'none',
+      streamKind: feed === 'camera' ? 'image' : (doorbell.streamKind === 'image' ? 'image' : 'video'),
+      feed,
       remainingMs: doorbell.until - now(),
     };
   }
 
-  function proxyStream(target, res, until) {
+  async function chooseFeed(snap) {
+    if (snap.address && snap.token) {
+      if (snap.cameraId) {
+        try {
+          const source = await homey.camera(snap.address, snap.token, snap.cameraId);
+          if (source?.imageId || source?.snapshotUrl) return { feed: 'camera', cameraId: snap.cameraId };
+        } catch {
+          return { feed: 'camera', cameraId: snap.cameraId };
+        }
+      } else {
+        try {
+          const picked = pickCamera(await homey.cameras(snap.address, snap.token));
+          if (picked) return { feed: 'camera', cameraId: picked.id };
+        } catch { /* the card still opens */ }
+      }
+    }
+    if (snap.streamUrl) return { feed: 'url', cameraId: null };
+    return { feed: 'none', cameraId: null };
+  }
+
+  async function beginDoorbell({ title, body, test }) {
+    const snap = store.snapshot();
+    const choice = await chooseFeed(snap);
+    doorbell = {
+      id: randomBytes(16).toString('hex'),
+      title,
+      body,
+      test: test === true,
+      until: now() + RING_MS,
+      feed: choice.feed,
+      cameraId: choice.cameraId,
+      streamKind: snap.streamKind === 'image' ? 'image' : 'video',
+      snapFailed: false,
+      imageFailed: false,
+      imagePath: '',
+    };
+    return doorbell;
+  }
+
+  function proxyStream(target, res, until, options = {}) {
     const lib = target.protocol === 'https:' ? https : http;
+    const timeout = options.timeout || 8000;
     return new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (err) => {
+        if (settled) return;
+        settled = true;
+        if (err) reject(err);
+        else resolve();
+      };
       const upstream = lib.request({
         host: target.connectHost,
         port: target.port,
         method: 'GET',
         path: target.path,
-        headers: { Host: target.hostHeader, Accept: '*/*' },
+        headers: { Host: target.hostHeader, Accept: 'image/jpeg, image/*, video/*, */*', ...options.headers },
         servername: target.hostname,
-        timeout: 8000,
+        timeout,
       }, (up) => {
         const rejectBeforeHeaders = (status, reason, detail) => {
           up.resume();
           if (res.headersSent || res.writableEnded) {
             res.destroy();
-            resolve();
+            finish();
             return;
           }
-          reject(new HttpError(status, reason, 'The video stream did not start.', detail));
+          finish(new HttpError(status, reason, 'The video stream did not start.', detail));
         };
         if ((up.statusCode || 0) >= 300 && (up.statusCode || 0) < 400) {
           rejectBeforeHeaders(502, 'stream');
@@ -366,7 +414,7 @@ export function createHomeyHandler({
         }
         if (res.headersSent || res.writableEnded) {
           up.resume();
-          resolve();
+          finish();
           return;
         }
         res.writeHead(200, {
@@ -384,21 +432,77 @@ export function createHomeyHandler({
         up.on('error', stop);
         up.on('end', () => {
           clearTimeout(timer);
-          resolve();
+          finish();
         });
         up.pipe(res);
       });
       upstream.on('timeout', () => {
         upstream.destroy();
-        if (!res.headersSent) reject(new HttpError(502, 'stream', 'The video stream did not start.', 'timeout'));
+        if (!res.headersSent) finish(new HttpError(502, 'stream', 'The video stream did not start.', 'timeout'));
       });
       upstream.on('error', (err) => {
         if (!res.headersSent) {
-          reject(new HttpError(502, 'stream', 'The video stream did not start.', classifyNetworkError(err)));
+          finish(new HttpError(502, 'stream', 'The video stream did not start.', classifyNetworkError(err)));
         }
       });
       upstream.end();
     });
+  }
+
+  async function serveCamera(res, live) {
+    if (live.snapFailed && live.imageFailed) {
+      throw new HttpError(502, 'stream', 'The video stream did not start.');
+    }
+    const snap = store.snapshot();
+    let source = null;
+    try {
+      source = await homey.camera(snap.address, snap.token, live.cameraId);
+    } catch {
+      source = null;
+    }
+    if (source?.snapshotUrl && !live.snapFailed) {
+      try {
+        const target = await inspectStreamUrl(source.snapshotUrl, { allowLoopback, lookupImpl });
+        await proxyStream(target, res, live.until, { timeout: 2500 });
+        return;
+      } catch {
+        live.snapFailed = true;
+        if (res.headersSent || res.writableEnded) return;
+      }
+    } else {
+      live.snapFailed = true;
+    }
+    if (live.imageFailed || !source?.imageId) {
+      live.imageFailed = true;
+      throw new HttpError(502, 'stream', 'The video stream did not start.');
+    }
+    const target = await inspectAddress(snap.address, { allowLoopback, lookupImpl });
+    const hostHeader = new URL(target.origin).host;
+    const paths = live.imagePath
+      ? [live.imagePath]
+      : [
+        `/api/image/${encodeURIComponent(source.imageId)}`,
+        `/api/manager/images/image/${encodeURIComponent(source.imageId)}`,
+      ];
+    let lastError = null;
+    for (const path of paths) {
+      try {
+        await proxyStream({
+          ...target,
+          path,
+          hostHeader,
+        }, res, live.until, {
+          headers: { Authorization: `Bearer ${snap.token}` },
+        });
+        live.imagePath = path;
+        return;
+      } catch (err) {
+        lastError = err;
+        if (res.headersSent || res.writableEnded) return;
+      }
+    }
+    live.imageFailed = true;
+    throw lastError || new HttpError(502, 'stream', 'The video stream did not start.');
   }
 
   async function acceptRing(req, res, url) {
@@ -430,12 +534,7 @@ export function createHomeyHandler({
         }
       }
     }
-    doorbell = {
-      id: randomBytes(16).toString('hex'),
-      title,
-      body,
-      until: at + RING_MS,
-    };
+    await beginDoorbell({ title, body, test: false });
     send(res, 200, { ok: true });
   }
 
@@ -554,7 +653,10 @@ export function createHomeyHandler({
         ringSet: connection.ringSet,
         streamSet: connection.streamSet,
         streamKind: connection.streamKind,
-        ...(session.role === 'admin' ? { streamUrl: snap.streamUrl || '' } : {}),
+        ...(session.role === 'admin' ? {
+          streamUrl: snap.streamUrl || '',
+          cameraId: snap.cameraId || '',
+        } : {}),
         access,
         admin: session.role === 'admin',
       });
@@ -562,14 +664,34 @@ export function createHomeyHandler({
     }
 
     if (req.method === 'GET' && rest === '/stream') {
-      const alert = currentDoorbell();
+      const live = doorbell && doorbell.until > now() ? doorbell : null;
+      if (!live || live.feed === 'none') {
+        send(res, 404, { error: 'No stream is playing.', code: 404, reason: 'ring_missing' });
+        return;
+      }
+      if (live.feed === 'camera') {
+        await serveCamera(res, live);
+        return;
+      }
       const snap = store.snapshot();
-      if (!alert || !snap.streamUrl) {
+      if (!snap.streamUrl) {
         send(res, 404, { error: 'No stream is playing.', code: 404, reason: 'ring_missing' });
         return;
       }
       const target = await inspectStreamUrl(snap.streamUrl, { allowLoopback, lookupImpl });
-      await proxyStream(target, res, alert.until);
+      await proxyStream(target, res, live.until);
+      return;
+    }
+
+    if (req.method === 'GET' && rest === '/cameras') {
+      requireWrite(access);
+      const snap = store.snapshot();
+      if (!snap.address || !snap.token) {
+        reply(req, res, 200, { cameras: [], cameraId: '' });
+        return;
+      }
+      const cameras = await homey.cameras(snap.address, snap.token);
+      reply(req, res, 200, { cameras, cameraId: snap.cameraId || '' });
       return;
     }
 
@@ -632,14 +754,18 @@ export function createHomeyHandler({
       recent.push(at);
       testHits.length = 0;
       testHits.push(...recent);
-      doorbell = {
-        id: randomBytes(16).toString('hex'),
-        title: 'Test',
-        body: '',
-        test: true,
-        until: at + RING_MS,
-      };
-      reply(req, res, 200, { ok: true, alert: currentDoorbell() });
+      if (typeof body?.cameraId === 'string') {
+        const requested = body.cameraId.trim();
+        if (requested && !ID_RE.test(requested)) throw new HttpError(400, 'invalid', 'Camera is invalid.');
+        try {
+          await store.setCamera(requested || null);
+        } catch (err) {
+          throw storeFailure(err);
+        }
+      }
+      await beginDoorbell({ title: 'Test', body: '', test: true });
+      const alert = currentDoorbell();
+      reply(req, res, 200, { ok: true, feed: alert?.feed || 'none', alert });
       return;
     }
 
