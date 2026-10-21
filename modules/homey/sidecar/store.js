@@ -10,7 +10,7 @@ import path from 'node:path';
 const MAX_PINS = 48;
 
 function empty() {
-  return { version: 1, address: null, token: null, pins: [] };
+  return { version: 1, address: null, token: null, ringToken: null, pins: [] };
 }
 
 function readState(file) {
@@ -21,6 +21,7 @@ function readState(file) {
       version: 1,
       address: typeof parsed.address === 'string' ? parsed.address : null,
       token: typeof parsed.token === 'string' ? parsed.token : null,
+      ringToken: typeof parsed.ringToken === 'string' ? parsed.ringToken : null,
       pins: Array.isArray(parsed.pins)
         ? parsed.pins.filter((pin) => pin && typeof pin.id === 'string')
         : [],
@@ -61,6 +62,7 @@ export function createStore(dir) {
       return {
         address: state.address,
         token: state.token,
+        ringToken: state.ringToken,
         pins: state.pins.map((pin) => ({ ...pin })),
       };
     },
@@ -69,7 +71,14 @@ export function createStore(dir) {
         configured: Boolean(state.address && state.token),
         address: state.address,
         tokenSet: Boolean(state.token),
+        ringSet: Boolean(state.ringToken),
       };
+    },
+    setRingToken(ringToken) {
+      return mutate((current) => ({ ...current, ringToken }));
+    },
+    clearRingToken() {
+      return mutate((current) => ({ ...current, ringToken: null }));
     },
     saveConnection({ address, token }) {
       return mutate((current) => ({ ...current, address, token }));

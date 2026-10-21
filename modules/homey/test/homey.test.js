@@ -511,8 +511,100 @@ test('a closed port is reported as refused and the key stays out of the answer',
   }
 });
 
+test('a doorbell ring stays up for thirty seconds and a locked tablet can see it', async () => {
+  let time = 1_700_000_000_000;
+  const roles = { current: 'admin' };
+  const me = startMe((req, res) => {
+    if (!String(req.headers.cookie || '').includes('yuvomi.sid=')) {
+      res.writeHead(401);
+      res.end('{}');
+      return;
+    }
+    const access = roles.current;
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      user: { id: 4, role: access === 'member' ? 'member' : 'admin', display_name: 'Noa' },
+      permissions: { modules: { 'ext:homey': access === 'member' ? 'write' : access } },
+    }));
+  });
+  const dir = mkdtempSync(path.join(tmpdir(), 'homey-ring-'));
+  const meUrl = await listen(me.server);
+  const sidecar = createHomeyServer({
+    dataDir: dir,
+    yuvomiUrl: meUrl,
+    allowLoopback: true,
+    now: () => time,
+  });
+  const base = await listen(sidecar);
+  try {
+    const missing = await call(base, '/api/extensions/homey/ring');
+    assert.equal(missing.status, 409);
+    assert.equal(missing.body.reason, 'ring_missing');
+
+    const first = await call(base, '/api/extensions/homey/status', { cookie: 'yuvomi.sid=ok' });
+    const jar = `yuvomi.sid=ok; ${first.cookie}`;
+    const created = await call(base, '/api/extensions/homey/ring-token', {
+      method: 'POST',
+      cookie: jar,
+      csrf: first.body.csrfToken,
+      json: {},
+    });
+    assert.equal(created.status, 200, JSON.stringify(created.body));
+    const ringToken = created.body.token;
+    assert.equal(typeof ringToken, 'string');
+    assert.equal(ringToken.length > 20, true);
+    const again = await call(base, '/api/extensions/homey/status', { cookie: jar });
+    assert.equal(again.body.ringSet, true);
+    assert.equal(again.text.includes(ringToken), false);
+
+    const wrong = await call(base, '/api/extensions/homey/ring?token=not-the-token');
+    assert.equal(wrong.status, 401);
+    assert.equal(wrong.text.includes(ringToken), false);
+
+    const ring = await call(base, `/api/extensions/homey/ring?token=${encodeURIComponent(ringToken)}&text=Inngang`);
+    assert.equal(ring.status, 200, JSON.stringify(ring.body));
+    assert.equal(ring.text.includes(ringToken), false);
+    const seen = await call(base, '/api/extensions/homey/alert', { cookie: jar });
+    assert.equal(seen.body.alert.title, 'Inngang');
+    assert.equal(seen.body.alert.remainingMs, 30_000);
+
+    roles.current = 'none';
+    const tablet = await call(base, '/api/extensions/homey/alert', { cookie: 'yuvomi.sid=tablet' });
+    assert.equal(tablet.status, 200, JSON.stringify(tablet.body));
+    assert.equal(tablet.body.alert.title, 'Inngang');
+    const hidden = await call(base, '/api/extensions/homey/pins', { cookie: 'yuvomi.sid=tablet' });
+    assert.equal(hidden.status, 403);
+
+    time += 30_001;
+    const gone = await call(base, '/api/extensions/homey/alert', { cookie: jar });
+    assert.equal(gone.body.alert, null);
+
+    roles.current = 'member';
+    const member = await call(base, '/api/extensions/homey/status', { cookie: 'yuvomi.sid=member' });
+    const refused = await call(base, '/api/extensions/homey/ring-token', {
+      method: 'POST',
+      cookie: `yuvomi.sid=member; ${member.cookie}`,
+      csrf: member.body.csrfToken,
+      json: {},
+    });
+    assert.equal(refused.status, 403);
+    assert.equal(refused.body.reason, 'admin_required');
+  } finally {
+    await close(sidecar);
+    await close(me.server);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('the gateway serves Homey itself and forwards everything else', async () => {
+  const seen = [];
   const upstream = http.createServer((req, res) => {
+    seen.push({ path: req.url, encoding: req.headers['accept-encoding'] || '' });
+    if (req.url === '/app') {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end('<!doctype html><html><body><p>Yuvomi</p></body></html>');
+      return;
+    }
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('from-yuvomi');
   });
@@ -530,6 +622,12 @@ test('the gateway serves Homey itself and forwards everything else', async () =>
   try {
     const forwarded = await fetch(`${base}/health`);
     assert.equal(await forwarded.text(), 'from-yuvomi');
+    const page = await fetch(`${base}/app`, {
+      headers: { Accept: 'text/html', 'Sec-Fetch-Dest': 'document', 'Accept-Encoding': 'gzip' },
+    });
+    const html = await page.text();
+    assert.match(html, /modules\/assets\/homey\/alert\.js/);
+    assert.equal(seen.find((item) => item.path === '/app').encoding, '');
     const status = await call(base, '/api/extensions/homey/status', { cookie: 'yuvomi.sid=ok' });
     assert.equal(status.status, 200);
     assert.equal(status.body.configured, false);

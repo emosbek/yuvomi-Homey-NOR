@@ -200,4 +200,82 @@ export function mountConnectionForm(container, { status, signal, onSaved, headin
     note(t('extensions.homey.settings.disconnected'), true);
     if (onSaved) await onSaved(data);
   }));
+
+  if (status?.admin) mountRing(container, { status, signal, csrf: () => csrf, setCsrf: (value) => { csrf = value; } });
+}
+
+function mountRing(container, { status, signal, csrf, setCsrf }) {
+  const block = document.createElement('section');
+  block.className = 'homey-ring';
+  container.append(block);
+
+  function paint({ ringSet, url }) {
+    block.replaceChildren();
+    block.append(heading('h3', 'homey-heading', t('extensions.homey.settings.ringHeading')));
+    const intro = document.createElement('p');
+    intro.className = 'form-hint';
+    intro.textContent = t('extensions.homey.settings.ringIntro');
+    block.append(intro);
+    if (url) {
+      const input = document.createElement('input');
+      input.className = 'form-input';
+      input.readOnly = true;
+      input.value = url;
+      input.setAttribute('aria-label', t('extensions.homey.settings.ringUrl'));
+      const copy = button(t('extensions.homey.settings.ringCopy'), 'btn btn--secondary');
+      copy.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(url);
+        } catch {
+          input.select();
+        }
+      }, { signal });
+      const row = document.createElement('div');
+      row.className = 'homey-actions';
+      row.append(input, copy);
+      block.append(row);
+    } else if (ringSet) {
+      const stored = document.createElement('p');
+      stored.className = 'form-hint';
+      stored.textContent = t('extensions.homey.settings.ringReady');
+      block.append(stored);
+    }
+    const actions = document.createElement('div');
+    actions.className = 'homey-actions';
+    const create = button(
+      ringSet || url ? t('extensions.homey.settings.ringNew') : t('extensions.homey.settings.ringCreate'),
+      'btn btn--secondary',
+    );
+    create.addEventListener('click', async () => {
+      create.disabled = true;
+      try {
+        const data = await homeyApi('/ring-token', { method: 'POST', csrf: csrf(), signal, body: {} });
+        setCsrf(data.csrfToken || csrf());
+        const next = `${location.origin}/api/extensions/homey/ring?token=${encodeURIComponent(data.token)}`;
+        paint({ ringSet: true, url: next });
+      } catch (err) {
+        if (err?.csrfToken) setCsrf(err.csrfToken);
+        create.disabled = false;
+      }
+    }, { signal });
+    actions.append(create);
+    if (ringSet || url) {
+      const remove = button(t('extensions.homey.settings.ringClear'), 'btn btn--danger-outline');
+      remove.addEventListener('click', async () => {
+        remove.disabled = true;
+        try {
+          const data = await homeyApi('/ring-token', { method: 'DELETE', csrf: csrf(), signal });
+          setCsrf(data.csrfToken || csrf());
+          paint({ ringSet: false, url: '' });
+        } catch (err) {
+          if (err?.csrfToken) setCsrf(err.csrfToken);
+          remove.disabled = false;
+        }
+      }, { signal });
+      actions.append(remove);
+    }
+    block.append(actions);
+  }
+
+  paint({ ringSet: status.ringSet === true, url: '' });
 }
