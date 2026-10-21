@@ -7,13 +7,23 @@ Modulen er nettleserkode. Adressen og API-nøkkelen ligger i en egen tjeneste, i
 ## Koble til
 
 1. I Homey: Innstillinger → API-nøkler. Nøkkelen trenger lesing og styring av enheter. Skal flyter kunne festes, trenger den også lesing og start av flyter.
-2. Kjør appen på en datamaskin i samme nett som Homey. Forhåndsvisningen i Cursor Cloud er en tunnel: nettleseren treffer `127.0.0.1:3000`, mens prosessen står i skyen og når ikke `192.168.x.x`.
+2. Kjør appen på en maskin i samme nett som Homey. Forhåndsvisningen i Cursor Cloud er en tunnel: nettleseren treffer `127.0.0.1:3000`, mens prosessen står i skyen og når ikke `192.168.x.x`.
+
+På Raspberry Pi-en (standardadresse `192.168.1.24`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/emosbek/yuvomiMo/cursor/homey-module-a566/modules/homey/install-pi.sh | sudo bash
+```
+
+Skriptet kloner denne grenen til `/opt/yuvomi`, installerer Docker hvis den mangler, og starter Yuvomi pluss portalen. Åpne `http://192.168.1.24:3000` fra en annen enhet på samme nett.
+
+Til utvikling på en PC i samme nett:
 
 ```bash
 npm run dev:homey
 ```
 
-Det starter Yuvomi på port 3001 og portalen på port 3000. Åpne `http://127.0.0.1:3000` på den samme maskinen.
+Det starter Yuvomi på port 3001 og portalen på port 3000.
 
 3. Åpne Homey i menyen. Lim inn adressen, for eksempel `http://192.168.1.50`, og nøkkelen. Bare en administrator kan lagre den.
 4. Fest en enhet, en flyt eller en webhook. Knappen på siden kjører den.
