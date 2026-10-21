@@ -10,7 +10,7 @@ import path from 'node:path';
 const MAX_PINS = 48;
 
 function empty() {
-  return { version: 1, address: null, token: null, ringToken: null, pins: [] };
+  return { version: 1, address: null, token: null, ringToken: null, streamUrl: null, streamKind: 'video', pins: [] };
 }
 
 function readState(file) {
@@ -22,6 +22,8 @@ function readState(file) {
       address: typeof parsed.address === 'string' ? parsed.address : null,
       token: typeof parsed.token === 'string' ? parsed.token : null,
       ringToken: typeof parsed.ringToken === 'string' ? parsed.ringToken : null,
+      streamUrl: typeof parsed.streamUrl === 'string' ? parsed.streamUrl : null,
+      streamKind: parsed.streamKind === 'image' ? 'image' : 'video',
       pins: Array.isArray(parsed.pins)
         ? parsed.pins.filter((pin) => pin && typeof pin.id === 'string')
         : [],
@@ -63,6 +65,8 @@ export function createStore(dir) {
         address: state.address,
         token: state.token,
         ringToken: state.ringToken,
+        streamUrl: state.streamUrl,
+        streamKind: state.streamKind === 'image' ? 'image' : 'video',
         pins: state.pins.map((pin) => ({ ...pin })),
       };
     },
@@ -72,6 +76,8 @@ export function createStore(dir) {
         address: state.address,
         tokenSet: Boolean(state.token),
         ringSet: Boolean(state.ringToken),
+        streamSet: Boolean(state.streamUrl),
+        streamKind: state.streamKind === 'image' ? 'image' : 'video',
       };
     },
     setRingToken(ringToken) {
@@ -79,6 +85,13 @@ export function createStore(dir) {
     },
     clearRingToken() {
       return mutate((current) => ({ ...current, ringToken: null }));
+    },
+    setStream({ url, kind }) {
+      return mutate((current) => ({
+        ...current,
+        streamUrl: url || null,
+        streamKind: kind === 'image' ? 'image' : 'video',
+      }));
     },
     saveConnection({ address, token }) {
       return mutate((current) => ({ ...current, address, token }));

@@ -3,7 +3,7 @@ import { t } from '/i18n.js';
 const API = '/api/extensions/homey';
 
 export function reasonMessage(reason, detail) {
-  if (detail && (reason === 'address' || reason === 'homey_unreachable')) {
+  if (detail && (reason === 'address' || reason === 'homey_unreachable' || reason === 'stream')) {
     const specific = `extensions.homey.reason.${reason}.${detail}`;
     const specificText = t(specific);
     if (specificText !== specific) return specificText;
@@ -208,8 +208,10 @@ function mountRing(container, { status, signal, csrf, setCsrf }) {
   const block = document.createElement('section');
   block.className = 'homey-ring';
   container.append(block);
+  let streamUrl = status.streamUrl || '';
+  let streamKind = status.streamKind === 'image' ? 'image' : 'video';
 
-  function paint({ ringSet, url, message = '', bad = false, busy = false }) {
+  function paint({ ringSet, url, message = '', bad = false, busy = false, testing = false }) {
     block.replaceChildren();
     block.append(heading('h3', 'homey-heading', t('extensions.homey.settings.ringHeading')));
     const intro = document.createElement('p');
@@ -302,6 +304,65 @@ function mountRing(container, { status, signal, csrf, setCsrf }) {
       actions.append(remove);
     }
     block.append(actions);
+
+    const stream = field(t('extensions.homey.settings.stream'), {
+      id: 'homey-stream-url',
+      hint: t('extensions.homey.settings.streamHint'),
+      value: streamUrl,
+      placeholder: 'http://192.168.1.20/video.mjpg',
+    });
+    const kind = document.createElement('select');
+    kind.className = 'form-input';
+    kind.id = 'homey-stream-kind';
+    kind.setAttribute('aria-label', t('extensions.homey.settings.streamKind'));
+    for (const [value, label] of [
+      ['video', t('extensions.homey.settings.streamVideo')],
+      ['image', t('extensions.homey.settings.streamImage')],
+    ]) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = label;
+      option.selected = streamKind === value;
+      kind.append(option);
+    }
+    const test = button(
+      testing ? t('extensions.homey.settings.ringTestWorking') : t('extensions.homey.settings.ringTest'),
+      'btn btn--primary',
+    );
+    test.disabled = testing === true;
+    test.addEventListener('click', async () => {
+      const nextUrl = stream.input.value.trim();
+      const nextKind = kind.value === 'image' ? 'image' : 'video';
+      streamUrl = nextUrl;
+      streamKind = nextKind;
+      paint({ ringSet, url, testing: true });
+      try {
+        const saved = await homeyApi('/ring-stream', {
+          method: 'PUT',
+          csrf: csrf(),
+          signal,
+          body: { url: nextUrl, kind: nextKind },
+        });
+        if (signal?.aborted) return;
+        setCsrf(saved.csrfToken || csrf());
+        const data = await homeyApi('/ring-test', { method: 'POST', csrf: csrf(), signal, body: {} });
+        if (signal?.aborted) return;
+        setCsrf(data.csrfToken || csrf());
+        paint({ ringSet, url, message: t('extensions.homey.settings.ringTested') });
+      } catch (err) {
+        if (signal?.aborted || err?.name === 'AbortError') return;
+        if (err?.csrfToken) setCsrf(err.csrfToken);
+        const text = err?.status === 404
+          ? t('extensions.homey.settings.ringStale')
+          : (err?.message || reasonMessage(err?.reason, err?.detail));
+        paint({ ringSet, url, message: text, bad: true });
+      }
+    }, { signal });
+    const testRow = document.createElement('div');
+    testRow.className = 'homey-actions';
+    testRow.append(kind, test);
+    block.append(stream.wrap, testRow);
+
     if (message) {
       const statusLine = document.createElement('p');
       statusLine.className = bad ? 'form-hint form-hint--danger' : 'form-hint';
