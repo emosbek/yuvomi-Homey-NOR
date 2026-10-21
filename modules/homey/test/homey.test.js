@@ -626,7 +626,10 @@ test('the gateway serves Homey itself and forwards everything else', async () =>
       headers: { Accept: 'text/html', 'Sec-Fetch-Dest': 'document', 'Accept-Encoding': 'gzip' },
     });
     const html = await page.text();
-    assert.match(html, /modules\/assets\/homey\/alert\.js/);
+    assert.match(html, /\/homey-alert\.js/);
+    const script = await fetch(`${base}/homey-alert.js`);
+    assert.equal(script.status, 200);
+    assert.match(await script.text(), /startDoorbellWatch/);
     assert.equal(seen.find((item) => item.path === '/app').encoding, '');
     const status = await call(base, '/api/extensions/homey/status', { cookie: 'yuvomi.sid=ok' });
     assert.equal(status.status, 200);

@@ -38,7 +38,7 @@ På Homey-siden lager en administrator en ringeadresse. Den vises bare én gang.
 
 Nettbrettet som har Yuvomi åpen, legger et kort over hele skjermen, også over fotobildeskjermspareren. Kortet forsvinner av seg selv etter 30 sekunder. Et trykk eller Escape lukker det før det.
 
-Adressen er en nøkkel. Den som har den, kan utløse kortet. Veggmodus laster ikke moduler selv, men porten på Pi-en legger skriptet inn i Yuvomi-siden, så oversikten og veggen får kortet uten at nettbrettet står på Homey-siden.
+Adressen er en nøkkel. Den som har den, kan utløse kortet. Veggmodus laster ikke moduler selv. Porten serverer derfor vakt-skriptet selv på `/homey-alert.js` og legger det inn i hver Yuvomi-side, også før innlogging. Skriptet venter til nettbrettet er logget inn, og legger kortet over oversikten, veggen og fotobildeskjermspareren.
 
 ## Hva en knapp kan gjøre
 
