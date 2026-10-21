@@ -167,6 +167,7 @@ function publicPin(pin, live = {}) {
     label: pin.label,
     detail: pin.detail || '',
     mode: pin.mode || (pin.kind === 'capability' ? 'toggle' : 'trigger'),
+    capabilityId: pin.capabilityId || '',
     deviceClass: pin.deviceClass || '',
     value: live.value === undefined ? null : live.value,
     unavailable: live.unavailable === true,

@@ -37,6 +37,11 @@ function valueLabel(pin) {
   if (typeof pin.value === 'boolean') {
     return pin.value ? t('extensions.homey.page.on') : t('extensions.homey.page.off');
   }
+  if (typeof pin.value === 'number'
+    && (pin.capabilityId === 'dim' || String(pin.capabilityId || '').startsWith('dim.'))
+    && pin.value >= 0 && pin.value <= 1) {
+    return `${Math.round(pin.value * 100)} %`;
+  }
   if (pin.value == null || pin.value === '') return '';
   return String(pin.value);
 }
