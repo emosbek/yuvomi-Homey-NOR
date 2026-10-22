@@ -65,5 +65,37 @@ Rettigheten heter `ext:homey`. `none` får ingen ruter. `read` ser knappene. `wr
 | `YUVOMI_INTERNAL_URL` | samme som upstream | Der sesjonen sjekkes |
 | `HOMEY_DATA_DIR` | `data/homey` | Egen lagring, aldri `yuvomi.db` |
 | `HOMEY_ALLOW_LOOPBACK` | av | Bare for tester |
+| `RECIPE_PROVIDER_ALLOW_PRIVATE_NETWORK` | `true` via install | Lar Yuvomi speile Mealie/Tandoor på LAN |
+
+## Feilsøk
+
+### `{"error":"Yuvomi is not reachable.","code":502,"reason":"upstream"}`
+
+Det er Homey-portalen som ikke får kontakt med Yuvomi på `YUVOMI_UPSTREAM` (standard `http://127.0.0.1:3001`). Det er ikke Tandoor, og ikke `RECIPE_PROVIDER_ALLOW_PRIVATE_NETWORK`.
+
+```bash
+curl -s http://127.0.0.1:3001/health
+curl -s http://127.0.0.1:3000/__homey/health
+sudo docker compose -f /opt/yuvomi/modules/homey/compose.yml ps
+sudo docker compose -f /opt/yuvomi/modules/homey/compose.yml logs --tail=80 yuvomi homey
+sudo docker compose -f /opt/yuvomi/modules/homey/compose.yml up -d --force-recreate
+```
+
+`/__homey/health` svarer fra portalen selv. Hvis den sier `upstreamOk: false`, er Yuvomi nede eller ikke publisert på `127.0.0.1:3001`.
+
+### Tandoor / Mealie sier privat nett eller får ikke kontakt
+
+1. Variabelen må ligge i `/opt/yuvomi/.env` **og** inne i containeren:
+
+```bash
+sudo grep '^RECIPE_PROVIDER_ALLOW_PRIVATE_NETWORK=' /opt/yuvomi/.env
+sudo docker exec yuvomi-yuvomi-1 printenv RECIPE_PROVIDER_ALLOW_PRIVATE_NETWORK
+```
+
+Hvis `.env` har `true` men `printenv` er tom, kjør `docker compose ... up -d --force-recreate yuvomi`.
+
+2. Bruk ikke `http://127.0.0.1:8085` som serveradresse i Yuvomi. Derfra er `127.0.0.1` Yuvomi-containeren selv. Bruk Pi-ens LAN-adresse, for eksempel `http://192.168.1.24:8085`.
+
+3. Hvis Tandoor bare er publisert som `127.0.0.1:8085->80`, når ingen annen container den. Endre i Tandoors compose til `0.0.0.0:8085:80` (eller bare `8085:80`), start Tandoor på nytt, og bruk LAN-adressen i Yuvomi.
 
 Tester: `node --test modules/homey/test/homey.test.js`

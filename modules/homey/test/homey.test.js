@@ -936,6 +936,11 @@ test('the gateway serves Homey itself and forwards everything else', async () =>
       res.end('<!doctype html><html><body><p>Yuvomi</p></body></html>');
       return;
     }
+    if (req.url === '/health') {
+      res.writeHead(200, { 'Content-Type': 'text/plain' });
+      res.end('ok');
+      return;
+    }
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('from-yuvomi');
   });
@@ -951,8 +956,14 @@ test('the gateway serves Homey itself and forwards everything else', async () =>
   });
   const base = await listen(gateway);
   try {
-    const forwarded = await fetch(`${base}/health`);
+    const forwarded = await fetch(`${base}/proxy-check`);
     assert.equal(await forwarded.text(), 'from-yuvomi');
+    const health = await fetch(`${base}/__homey/health`);
+    assert.equal(health.status, 200);
+    const healthBody = await health.json();
+    assert.equal(healthBody.ok, true);
+    assert.equal(healthBody.upstreamOk, true);
+    assert.equal(healthBody.upstream, upstreamUrl);
     const page = await fetch(`${base}/app`, {
       headers: { Accept: 'text/html', 'Sec-Fetch-Dest': 'document', 'Accept-Encoding': 'gzip' },
     });
@@ -977,6 +988,39 @@ test('the gateway serves Homey itself and forwards everything else', async () =>
   } finally {
     await close(gateway);
     await close(upstream);
+    await close(me.server);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the gateway answers 502 when Yuvomi upstream is down', async () => {
+  const me = startMe((req, res) => admin(res));
+  const dir = mkdtempSync(path.join(tmpdir(), 'homey-gw-down-'));
+  const meUrl = await listen(me.server);
+  const gateway = createGateway({
+    upstream: 'http://127.0.0.1:9',
+    yuvomiUrl: meUrl,
+    dataDir: dir,
+    allowLoopback: true,
+  });
+  const base = await listen(gateway);
+  try {
+    const probe = await fetch(`${base}/__homey/health`);
+    assert.equal(probe.status, 502);
+    const probeBody = await probe.json();
+    assert.equal(probeBody.ok, false);
+    assert.equal(probeBody.upstreamOk, false);
+    assert.equal(probeBody.upstream, 'http://127.0.0.1:9');
+
+    const page = await fetch(`${base}/anything`);
+    assert.equal(page.status, 502);
+    assert.deepEqual(await page.json(), {
+      error: 'Yuvomi is not reachable.',
+      code: 502,
+      reason: 'upstream',
+    });
+  } finally {
+    await close(gateway);
     await close(me.server);
     rmSync(dir, { recursive: true, force: true });
   }
