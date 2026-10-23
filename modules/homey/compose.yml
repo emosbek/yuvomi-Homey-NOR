@@ -1,6 +1,12 @@
 # Yuvomi plus the Homey gateway, for a machine on the same network as Homey.
-# Paths are relative to this file. The browser uses port 3000 on the host.
-# Yuvomi itself stays on 127.0.0.1:3001.
+# Paths are relative to this file. The browser uses port 3000 on the host
+# (Homey gateway, network_mode: host). Yuvomi is published only as
+# 127.0.0.1:3001->3000 so the gateway can reach it without stealing :3000.
+#
+# Do not start the repo-root docker-compose.yml on this Pi while Homey is
+# running: that file maps ${OIKOS_HTTP_PORT:-3000}:3000 and will fight Homey
+# for port 3000. Keep OIKOS_HTTP_PORT=3001 in ../../.env as documentation of
+# the host port even though this file pins the publish mapping below.
 #
 # Recipe mirrors (Tandoor/Mealie) on the same Pi:
 # - Set RECIPE_PROVIDER_ALLOW_PRIVATE_NETWORK=true in ../../.env

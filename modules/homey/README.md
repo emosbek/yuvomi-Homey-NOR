@@ -66,14 +66,27 @@ Rettigheten heter `ext:homey`. `none` får ingen ruter. `read` ser knappene. `wr
 | `HOMEY_DATA_DIR` | `data/homey` | Egen lagring, aldri `yuvomi.db` |
 | `HOMEY_ALLOW_LOOPBACK` | av | Bare for tester |
 | `RECIPE_PROVIDER_ALLOW_PRIVATE_NETWORK` | `true` via install | Lar Yuvomi speile Mealie/Tandoor på LAN |
+| `OIKOS_HTTP_PORT` | `3001` via install | Host-port for Yuvomi; må ikke være `3000` mens Homey kjører |
+
+## Porter
+
+| Port på Pi | Prosess |
+| --- | --- |
+| `3000` | Homey-gateway (nettleseren) |
+| `3001` → container `3000` | Yuvomi (bare `127.0.0.1`) |
+
+Bruk bare `modules/homey/compose.yml` på denne Pi-en. Rotfilen `docker-compose.yml` mapper `${OIKOS_HTTP_PORT:-3000}:3000` og tar Homeys port hvis `OIKOS_HTTP_PORT` mangler eller er `3000`.
 
 ## Feilsøk
 
 ### `{"error":"Yuvomi is not reachable.","code":502,"reason":"upstream"}`
 
-Det er Homey-portalen som ikke får kontakt med Yuvomi på `YUVOMI_UPSTREAM` (standard `http://127.0.0.1:3001`). Det er ikke Tandoor, og ikke `RECIPE_PROVIDER_ALLOW_PRIVATE_NETWORK`.
+Homey-portalen får ikke kontakt med Yuvomi på `YUVOMI_UPSTREAM` (`http://127.0.0.1:3001`). Vanlig årsak på denne Pi-en: Yuvomi ble startet på host-port **3000** (ofte via rot-`docker-compose.yml` eller `OIKOS_HTTP_PORT=3000`), så den kolliderte med Homey og ble ikke lyttende på `3001`. Det er ikke Tandoor, og ikke `RECIPE_PROVIDER_ALLOW_PRIVATE_NETWORK`.
 
 ```bash
+sudo grep '^OIKOS_HTTP_PORT=' /opt/yuvomi/.env
+# forventet: OIKOS_HTTP_PORT=3001
+ss -lntp | grep -E '3000|3001'
 curl -s http://127.0.0.1:3001/health
 curl -s http://127.0.0.1:3000/__homey/health
 sudo docker compose -f /opt/yuvomi/modules/homey/compose.yml ps

@@ -60,6 +60,28 @@ ensure_env_line() {
   echo "La til ${key}=${value} i ${file}"
 }
 
+# Homey owns host :3000. Yuvomi must stay on host :3001 (see compose.yml).
+# If OIKOS_HTTP_PORT is 3000 (root compose default), a later
+# `docker compose -f /opt/yuvomi/docker-compose.yml up` steals Homey's port
+# and the gateway answers 502 "Yuvomi is not reachable".
+set_env_value() {
+  local key="$1"
+  local value="$2"
+  local file="${DEST}/.env"
+  if grep -q "^${key}=" "$file" 2>/dev/null; then
+    local current
+    current="$(sed -n "s/^${key}=//p" "$file" | head -n1)"
+    if [ "$current" = "$value" ]; then
+      return 0
+    fi
+    sed -i "s/^${key}=.*/${key}=${value}/" "$file"
+    echo "Satte ${key}=${value} i ${file} (var ${current})"
+    return 0
+  fi
+  printf '%s=%s\n' "$key" "$value" >>"$file"
+  echo "La til ${key}=${value} i ${file}"
+}
+
 if [ ! -f "${DEST}/.env" ]; then
   umask 077
   cat > "${DEST}/.env" <<EOF
@@ -69,11 +91,15 @@ BASE_URL=http://${HOST}:3000
 SESSION_SECURE=false
 TRUST_PROXY=loopback
 NODE_ENV=production
+OIKOS_HTTP_PORT=3001
 RECIPE_PROVIDER_ALLOW_PRIVATE_NETWORK=true
 EOF
   chmod 600 "${DEST}/.env"
   echo "Ny ${DEST}/.env. Ta vare på filen. Databasen kan ikke åpnes uten nøkkelen i den."
 else
+  # Force the Homey port split even on an existing .env that still has the
+  # root-compose default 3000 (that is what took Yuvomi down on this Pi).
+  set_env_value OIKOS_HTTP_PORT 3001
   # LAN Pi installs almost always mirror Mealie/Tandoor on a private address.
   # Without this switch the settings form refuses the URL; with it set only in
   # .env on disk but not recreated into the container, the running process still
