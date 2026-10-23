@@ -1,6 +1,21 @@
 # Yuvomi plus the Homey gateway, for a machine on the same network as Homey.
-# Paths are relative to this file. The browser uses port 3000 on the host.
-# Yuvomi itself stays on 127.0.0.1:3001.
+# Paths are relative to this file. The browser uses port 3000 on the host
+# (Homey gateway, network_mode: host). Yuvomi is published only as
+# 127.0.0.1:3001->3000 so the gateway can reach it without stealing :3000.
+#
+# Do not start the repo-root docker-compose.yml on this Pi while Homey is
+# running: that file maps ${OIKOS_HTTP_PORT:-3000}:3000 and will fight Homey
+# for port 3000. Keep OIKOS_HTTP_PORT=3001 in ../../.env as documentation of
+# the host port even though this file pins the publish mapping below.
+#
+# Recipe mirrors (Tandoor/Mealie) on the same Pi:
+# - Set RECIPE_PROVIDER_ALLOW_PRIVATE_NETWORK=true in ../../.env
+# - Do NOT use http://127.0.0.1:8085 as the base URL inside Yuvomi: that is
+#   the container's own loopback, not the host. Prefer the Pi LAN IP with
+#   Tandoor published on 0.0.0.0 (not only 127.0.0.1), or join Tandoor's
+#   Docker network and use its service hostname.
+# - host.docker.internal points at the host gateway; it only helps when the
+#   other service listens on an interface the bridge can reach.
 
 name: yuvomi
 
@@ -10,6 +25,8 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:3001:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     env_file:
       - ../../.env
     environment:
@@ -19,6 +36,10 @@ services:
       MODULES_DIR: /app/modules
       SESSION_SECURE: "false"
       TRUST_PROXY: loopback
+      # RECIPE_PROVIDER_ALLOW_PRIVATE_NETWORK comes from ../../.env via env_file.
+      # Do not pin it here: Compose substitutes ${...} from the compose file's
+      # directory, not from ../../.env, and would overwrite a true from env_file
+      # with the default false.
     volumes:
       - ../../data:/data
       - ../../backups:/backups

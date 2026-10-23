@@ -13,6 +13,12 @@
  * YUVOMI_INTERNAL_URL  where this process asks /api/v1/auth/me (default the upstream)
  * HOMEY_DATA_DIR       state directory (default data/homey)
  * HOMEY_ALLOW_LOOPBACK set to 1 only for tests against a Homey on this machine
+ *
+ * Browser JSON `{"error":"Yuvomi is not reachable.","code":502,"reason":"upstream"}`
+ * means this process could not open a TCP connection to YUVOMI_UPSTREAM. It is
+ * not a Tandoor/Mealie error and not RECIPE_PROVIDER_ALLOW_PRIVATE_NETWORK.
+ * GET /__homey/health reports whether the upstream answers without going
+ * through the proxy path the browser uses for the rest of the app.
  */
 
 import { readFileSync } from 'node:fs';
@@ -26,6 +32,16 @@ const ALERT_SOURCE = readFileSync(new URL('./alert.js', import.meta.url));
 const HOP = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'upgrade', 'transfer-encoding']);
 const ALERT_SCRIPT = '<script type="module" src="/homey-alert.js"></script>';
 const HTML_LIMIT = 2_000_000;
+const UPSTREAM_LOG_EVERY_MS = 10_000;
+let lastUpstreamLogAt = 0;
+
+function logUpstreamFailure(err, upstream) {
+  const now = Date.now();
+  if (now - lastUpstreamLogAt < UPSTREAM_LOG_EVERY_MS) return;
+  lastUpstreamLogAt = now;
+  const code = err?.code || err?.message || 'unknown';
+  console.error(`[homey-gateway] upstream ${upstream} not reachable (${code})`);
+}
 
 function wantsDocument(req) {
   if (req.method !== 'GET') return false;
@@ -51,6 +67,34 @@ function forwardHeaders(incoming) {
   return headers;
 }
 
+function probeUpstream(upstream, timeoutMs = 2000) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (ok, detail) => {
+      if (settled) return;
+      settled = true;
+      resolve({ ok, detail });
+    };
+    const target = splitOrigin(upstream);
+    const req = http.request({
+      hostname: target.hostname,
+      port: target.port,
+      method: 'GET',
+      path: '/health',
+      timeout: timeoutMs,
+    }, (res) => {
+      res.resume();
+      finish(res.statusCode === 200, `HTTP ${res.statusCode}`);
+    });
+    req.on('timeout', () => {
+      req.destroy();
+      finish(false, 'timeout');
+    });
+    req.on('error', (err) => finish(false, err.code || err.message || 'error'));
+    req.end();
+  });
+}
+
 export function createGateway({
   upstream = process.env.YUVOMI_UPSTREAM || 'http://127.0.0.1:3001',
   yuvomiUrl = process.env.YUVOMI_INTERNAL_URL || upstream,
@@ -63,6 +107,16 @@ export function createGateway({
   function isHomey(req) {
     const pathName = (req.url || '/').split('?')[0];
     return pathName === '/api/extensions/homey' || pathName.startsWith('/api/extensions/homey/');
+  }
+
+  function writeUpstreamDown(res) {
+    const body = JSON.stringify({ error: 'Yuvomi is not reachable.', code: 502, reason: 'upstream' });
+    res.writeHead(502, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Content-Length': Buffer.byteLength(body),
+      'Cache-Control': 'no-store',
+    });
+    res.end(body);
   }
 
   function proxy(req, res) {
@@ -109,18 +163,13 @@ export function createGateway({
         res.end(body);
       });
     });
-    preq.on('error', () => {
+    preq.on('error', (err) => {
+      logUpstreamFailure(err, upstream);
       if (res.headersSent || res.writableEnded) {
         res.destroy();
         return;
       }
-      const body = JSON.stringify({ error: 'Yuvomi is not reachable.', code: 502, reason: 'upstream' });
-      res.writeHead(502, {
-        'Content-Type': 'application/json; charset=utf-8',
-        'Content-Length': Buffer.byteLength(body),
-        'Cache-Control': 'no-store',
-      });
-      res.end(body);
+      writeUpstreamDown(res);
     });
     req.pipe(preq);
   }
@@ -135,6 +184,25 @@ export function createGateway({
         'Content-Length': ALERT_SOURCE.length,
       });
       res.end(ALERT_SOURCE);
+      return;
+    }
+    if (req.method === 'GET' && pathName === '/__homey/health') {
+      probeUpstream(upstream).then((probe) => {
+        const payload = {
+          ok: probe.ok,
+          gateway: 'homey',
+          upstream,
+          upstreamOk: probe.ok,
+          detail: probe.detail,
+        };
+        const body = JSON.stringify(payload);
+        res.writeHead(probe.ok ? 200 : 502, {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Content-Length': Buffer.byteLength(body),
+          'Cache-Control': 'no-store',
+        });
+        res.end(body);
+      });
       return;
     }
     if (isHomey(req)) {
