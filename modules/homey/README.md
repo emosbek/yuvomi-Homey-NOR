@@ -27,6 +27,7 @@ Det starter Yuvomi på port 3001 og portalen på port 3000.
 
 3. Åpne Homey i menyen. Lim inn adressen, for eksempel `http://192.168.1.50`, og nøkkelen. Bare en administrator kan lagre den.
 4. Fest en enhet, en flyt eller en webhook. Knappen på siden kjører den.
+5. Festede knapper vises også i **Homey**-widgeten på Oversikt. Widgeten er på som standard; skru den av eller endre størrelse under Tilpass.
 
 Nøkkelen skrives til `data/homey/state.json` med filrettigheter som bare eieren kan lese. Ingen rute sender den tilbake.
 

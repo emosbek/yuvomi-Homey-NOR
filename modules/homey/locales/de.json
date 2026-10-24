@@ -1,6 +1,10 @@
 {
   "menu": "Homey",
   "module": "Homey",
+  "widgets.pins": "Homey",
+  "widgets.emptyTitle": "Noch keine Knöpfe",
+  "widgets.emptyBody": "Hefte Knöpfe unter Homey an. Sie erscheinen hier auf der Übersicht.",
+  "widgets.emptyCta": "Knöpfe anheften",
   "page.title": "Homey",
   "page.pinsTitle": "Aktive Knöpfe",
   "page.addTitle": "Aus Homey hinzufügen",

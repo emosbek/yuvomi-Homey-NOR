@@ -4,47 +4,17 @@ import { mountEmptyState } from '/utils/empty-state.js';
 import { renderPageBody, renderPageHeader, renderPageSection, renderPageTitle } from '/utils/page-layout.js';
 import { showToast } from '/utils/toast-show.js';
 import { startDoorbellWatch } from './alert.js';
-import { button, heading, homeyApi, mountConnectionForm } from './browser.js';
+import {
+  button,
+  heading,
+  homeyApi,
+  mountConnectionForm,
+  pinIcon,
+  valueLabel,
+} from './browser.js';
 
 function paintIcons(root) {
   if (window.lucide) window.lucide.createIcons({ el: root });
-}
-
-function deviceIcon(deviceClass) {
-  return {
-    light: 'lightbulb',
-    socket: 'plug',
-    thermostat: 'thermometer',
-    lock: 'lock',
-    windowcoverings: 'blinds',
-    speaker: 'speaker',
-    fan: 'fan',
-    heater: 'flame',
-    doorbell: 'bell',
-    sensor: 'activity',
-    tv: 'tv',
-    button: 'circle',
-  }[deviceClass] || '';
-}
-
-function pinIcon(pin) {
-  if (pin.kind === 'flow') return 'workflow';
-  if (pin.kind === 'webhook') return 'webhook';
-  return deviceIcon(pin.deviceClass);
-}
-
-function valueLabel(pin) {
-  if (pin.unavailable) return t('extensions.homey.page.unavailable');
-  if (typeof pin.value === 'boolean') {
-    return pin.value ? t('extensions.homey.page.on') : t('extensions.homey.page.off');
-  }
-  if (typeof pin.value === 'number'
-    && (pin.capabilityId === 'dim' || String(pin.capabilityId || '').startsWith('dim.'))
-    && pin.value >= 0 && pin.value <= 1) {
-    return `${Math.round(pin.value * 100)} %`;
-  }
-  if (pin.value == null || pin.value === '') return '';
-  return String(pin.value);
 }
 
 function isDimPercent(cap) {

@@ -1,6 +1,10 @@
 {
   "menu": "Homey",
   "module": "Homey",
+  "widgets.pins": "Homey",
+  "widgets.emptyTitle": "No buttons yet",
+  "widgets.emptyBody": "Pin buttons in Homey. They show up here on the overview.",
+  "widgets.emptyCta": "Pin buttons",
   "page.title": "Homey",
   "page.pinsTitle": "Active buttons",
   "page.addTitle": "Add from Homey",

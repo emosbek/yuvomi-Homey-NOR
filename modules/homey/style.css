@@ -115,3 +115,18 @@
 .homey-ring .form-input {
   flex: 1 1 12rem;
 }
+
+.homey-widget__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+  gap: var(--space-2);
+  padding: 0 var(--space-3) var(--space-3);
+}
+
+.homey-widget__pin {
+  min-height: 5.5rem;
+}
+
+.homey-widget__hint {
+  margin: 0 var(--space-3) var(--space-2);
+}

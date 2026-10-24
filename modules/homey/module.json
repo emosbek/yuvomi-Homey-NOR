@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "homey",
   "name": "Homey",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Pin Homey devices, flows and webhooks as buttons for the household.",
   "entry": "index.js",
   "style": "style.css",
@@ -29,8 +29,18 @@
   "i18n": { "defaultLocale": "nb" },
   "capabilities": {
     "permissions": {
-      "module": { "label": "Homey", "labelKey": "module", "icon": "house" }
+      "module": { "label": "Homey", "labelKey": "module", "icon": "house" },
+      "widgets": [{ "id": "pins", "label": "Homey", "labelKey": "widgets.pins" }]
     },
+    "widgets": [{
+      "id": "pins",
+      "entry": "widgets/pins.js",
+      "label": "Homey",
+      "labelKey": "widgets.pins",
+      "icon": "house",
+      "defaultSize": "2x2",
+      "defaultVisible": true
+    }],
     "api": { "prefix": "/api/extensions/homey" }
   }
 }

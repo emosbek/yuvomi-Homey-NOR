@@ -1,6 +1,10 @@
 {
   "menu": "Homey",
   "module": "Homey",
+  "widgets.pins": "Homey",
+  "widgets.emptyTitle": "Ingen knapper ennå",
+  "widgets.emptyBody": "Fest knapper under Homey. De dukker opp her på oversikten.",
+  "widgets.emptyCta": "Fest knapper",
   "page.title": "Homey",
   "page.pinsTitle": "Aktive knapper",
   "page.addTitle": "Legg til fra Homey",

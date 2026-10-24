@@ -2,6 +2,43 @@ import { t } from '/i18n.js';
 
 const API = '/api/extensions/homey';
 
+export function deviceIcon(deviceClass) {
+  return {
+    light: 'lightbulb',
+    socket: 'plug',
+    thermostat: 'thermometer',
+    lock: 'lock',
+    windowcoverings: 'blinds',
+    speaker: 'speaker',
+    fan: 'fan',
+    heater: 'flame',
+    doorbell: 'bell',
+    sensor: 'activity',
+    tv: 'tv',
+    button: 'circle',
+  }[deviceClass] || '';
+}
+
+export function pinIcon(pin) {
+  if (pin.kind === 'flow') return 'workflow';
+  if (pin.kind === 'webhook') return 'webhook';
+  return deviceIcon(pin.deviceClass);
+}
+
+export function valueLabel(pin) {
+  if (pin.unavailable) return t('extensions.homey.page.unavailable');
+  if (typeof pin.value === 'boolean') {
+    return pin.value ? t('extensions.homey.page.on') : t('extensions.homey.page.off');
+  }
+  if (typeof pin.value === 'number'
+    && (pin.capabilityId === 'dim' || String(pin.capabilityId || '').startsWith('dim.'))
+    && pin.value >= 0 && pin.value <= 1) {
+    return `${Math.round(pin.value * 100)} %`;
+  }
+  if (pin.value == null || pin.value === '') return '';
+  return String(pin.value);
+}
+
 export function reasonMessage(reason, detail) {
   if (detail && (reason === 'address' || reason === 'homey_unreachable' || reason === 'stream')) {
     const specific = `extensions.homey.reason.${reason}.${detail}`;

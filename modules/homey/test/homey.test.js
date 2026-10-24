@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, mkdtempSync, rmSync, statSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import http from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -982,6 +982,18 @@ test('the gateway serves Homey itself and forwards everything else', async () =>
   }
 });
 
+test('the overview widget loads pinned buttons and can activate them', () => {
+  const source = readFileSync(path.join(root, 'modules/homey/browser.js'), 'utf8');
+  assert.match(source, /export function pinIcon/);
+  assert.match(source, /export function valueLabel/);
+  assert.match(source, /export function deviceIcon/);
+  const widget = readFileSync(path.join(root, 'modules/homey/widgets/pins.js'), 'utf8');
+  assert.match(widget, /export async function renderWidget/);
+  assert.match(widget, /homeyApi\('\/pins'/);
+  assert.match(widget, /\/pins\/\$\{encodeURIComponent\(pin\.id\)\}\/activate/);
+  assert.match(widget, /ensureStyle\(STYLE\)/);
+});
+
 test('Yuvomi accepts the Homey manifest', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'homey-manifest-'));
   const dbPath = path.join(dir, 'manifest.db');
@@ -994,6 +1006,10 @@ test('Yuvomi accepts the Homey manifest', () => {
     if (homey.capabilities?.apiPrefix !== '/api/extensions/homey') throw new Error('prefix ' + homey.capabilities?.apiPrefix);
     if (homey.route?.path !== '/m/homey') throw new Error('route ' + homey.route?.path);
     if (!homey.i18n?.availableLocales?.includes('nb')) throw new Error('locales ' + homey.i18n?.availableLocales);
+    const pins = homey.capabilities?.widgets?.find((widget) => widget.id === 'homey:pins');
+    if (!pins) throw new Error('widget missing ' + JSON.stringify(homey.capabilities?.widgets));
+    if (!String(pins.entry || '').endsWith('/widgets/pins.js')) throw new Error('widget entry ' + pins.entry);
+    if (pins.defaultVisible !== true) throw new Error('widget should be visible by default');
     console.log('manifest-ok');
   `;
   const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
