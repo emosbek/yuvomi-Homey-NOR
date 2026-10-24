@@ -199,13 +199,20 @@ export function weatherHourlyChartMarkup(points, {
       dayMarks.push(`<line class="weather-hourly-chart__day-rule" x1="${x.toFixed(1)}" y1="${windS.top}" x2="${x.toFixed(1)}" y2="${windS.bottom}" />`);
     }
   }
+  // Dagetikett midt i panelet kolliderer med vær-ikonene. Ved én dag står
+  // datoen allerede i nav-raden over grafen - ingen SVG-etikett da. Ved flere
+  // dager: etikett ved starten av hvert døgn (ikke midt), under ikon-linjen.
   const uniqueDays = [...new Set(points.map((p) => p.date))];
-  const dayHeads = uniqueDays.map((date) => {
-    const idxs = points.map((p, i) => (p.date === date ? i : -1)).filter((i) => i >= 0);
-    const mid = idxs[Math.floor(idxs.length / 2)];
-    const x = chartX(mid, n, tempGeo);
-    return `<text x="${x.toFixed(1)}" y="14" class="weather-hourly-chart__day-label" text-anchor="middle">${esc(dayLabelShort(date, locale))}</text>`;
-  }).join('');
+  const dayHeads = uniqueDays.length <= 1
+    ? ''
+    : uniqueDays.map((date) => {
+      const idxs = points.map((p, i) => (p.date === date ? i : -1)).filter((i) => i >= 0);
+      const start = idxs[0];
+      if (start == null) return '';
+      const x = chartX(start, n, tempGeo);
+      const anchor = start === 0 ? 'start' : 'middle';
+      return `<text x="${x.toFixed(1)}" y="14" class="weather-hourly-chart__day-label" text-anchor="${anchor}">${esc(dayLabelShort(date, locale))}</text>`;
+    }).join('');
 
   const formatTemp = (v) => `${Math.round(v)}`;
   const formatWind = (v) => `${Math.round(v)}`;

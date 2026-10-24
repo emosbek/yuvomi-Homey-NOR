@@ -72,3 +72,10 @@ test('drawableHourlyDates: only days with at least two temps', () => {
     { date: '2026-10-26', hour: 2, temp: 7 },
   ]), ['2026-10-26']);
 });
+
+test('weatherHourlyChartMarkup: single day has no mid-chart day label', () => {
+  const oneDay = hourlyForDate(HOURLY, '2026-10-25');
+  const html = weatherHourlyChartMarkup(oneDay, { locale: 'nb' });
+  assert.match(html, /weather-hourly-chart__temp/);
+  assert.doesNotMatch(html, /weather-hourly-chart__day-label/);
+});
