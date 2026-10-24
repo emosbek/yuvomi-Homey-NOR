@@ -12,7 +12,7 @@ The module is browser code. The Homey address and API key live in a separate sid
 On the Raspberry Pi (default address `192.168.1.24`):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/emosbek/yuvomiMo/cursor/homey-overview-widget-be88/modules/homey/install-pi.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/emosbek/yuvomi-Homey-NOR/cursor/homey-overview-widget-be88/modules/homey/install-pi.sh | sudo bash
 ```
 
 The script clones this branch to `/opt/yuvomi`, installs Docker if needed, and starts Yuvomi plus the gateway. Run the same command again after an update. The gateway loads its code only when the container starts, so the script recreates it. Open `http://192.168.1.24:3000` from another device on the same network.
