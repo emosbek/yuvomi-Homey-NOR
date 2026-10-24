@@ -6818,6 +6818,28 @@ button.today-cockpit__more--link {
   color: var(--color-text-tertiary);
 }
 
+/* Stundenkurve an der Wand: dauerhaft sichtbar, grosse Tipps fuer Tagwahl. */
+.wall__weather--hourly .weather-hourly {
+  margin-top: var(--space-4);
+}
+
+.wall__weather--hourly .weather-hourly__step {
+  width: var(--target-md);
+  height: var(--target-md);
+}
+
+.wall__weather--hourly .weather-hourly__nav-label {
+  font-size: var(--wall-row-sub);
+}
+
+.wall__weather--hourly .weather-hourly-chart-stack {
+  min-width: 0;
+}
+
+.wall__weather--hourly .weather-hourly__legend {
+  font-size: var(--text-xs);
+}
+
 /* ── Ladefehler ── */
 /* Er muss aus zwei Metern als Fehler zu erkennen sein und trägt deshalb keinen
  * Retry-Knopf: den drückt an der Wand niemand. Die Fläche versucht es im Takt

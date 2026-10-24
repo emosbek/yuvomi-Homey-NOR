@@ -9,11 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Hourly weather chart on the overview card.** A click on the weather card expands a Yr-style
-  hourly chart (temperature, precipitation, weather icons, wind, gusts and direction) when
-  Open-Meteo or MET Norway supplies hourly data. Prev/next steps between available days; click
-  the card again to return to the 5-day strip. OpenWeatherMap stays on the day strip (3-hour
-  steps only).
+- **Hourly weather chart on the overview card and wall.** A click on the overview weather card
+  expands a Yr-style hourly chart (temperature, precipitation, weather icons, wind, gusts and
+  direction) when Open-Meteo or MET Norway supplies hourly data. Prev/next steps between days;
+  click again to return to the 5-day strip. Wall mode shows the same chart in place of the
+  four-day strip (with day steps). OpenWeatherMap stays on the day strip (3-hour steps only).
 
 - **MET Norway as a weather data source.** Under Settings → Household → Photos and weather you can
   choose Open-Meteo (default) or MET Norway (`api.met.no` Locationforecast via [data.met.no](https://data.met.no/)).

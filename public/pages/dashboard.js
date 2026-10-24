@@ -6748,15 +6748,20 @@ function rebuildWall(container, shell, { data, weather, failed, updatedAt, reren
 }
 
 /**
- * Wetter mit Vorhersage - dieselben Bausteine wie Karte und Masthead-Zeile,
- * ohne den Aktualisieren-Knopf: den drueckt am Wandtablet niemand, und ein
- * Bedienelement in einer reinen Anzeige waere ein falsches Versprechen.
+ * Wetter an der Wand: Jetzt + Stundenkurve (wenn hourly da), sonst die
+ * 4-Tage-Leiste. Kein Aktualisieren-Knopf - den tippt am Wandtablet niemand.
+ * Tagwahl Vor/Zurueck bleibt: das ist dieselbe Auskunft wie auf der Karte,
+ * nur dauerhaft sichtbar statt hinter einem Aufklappen.
  */
 function renderWallWeather(weather) {
   if (!weather?.current) return '';
+  _weatherHourlyPayload = weather;
   const { city, current, forecast, units } = weather;
   const desc = weatherDescText(weather, current.desc);
-  const days = (Array.isArray(forecast) ? forecast : []).slice(0, 4).map((d) => {
+  const hourlyHtml = weatherHourlyDayKeys(weather).length
+    ? renderWeatherHourlySection(weather)
+    : '';
+  const days = (!hourlyHtml && Array.isArray(forecast) ? forecast : []).slice(0, 4).map((d) => {
     const label = weatherDayLabel(weather, d.date);
     return `
       <li class="wall-weather__day"${weatherToneAttr(d.icon)}>
@@ -6770,7 +6775,7 @@ function renderWallWeather(weather) {
   }).join('');
 
   return `
-    <section class="wall__weather" aria-labelledby="wall-weather-title"${weatherToneAttr(current.icon)}${weatherMotionAttr(current.icon)}>
+    <section class="wall__weather${hourlyHtml ? ' wall__weather--hourly' : ''}" aria-labelledby="wall-weather-title"${weatherToneAttr(current.icon)}${weatherMotionAttr(current.icon)}>
       <h2 class="wall__section-title" id="wall-weather-title">${esc(t('dashboard.weather'))}</h2>
       <div class="wall-weather__now">
         ${weatherIconHtml(weather, current.icon, 'wall-weather__icon', 64, desc)}
@@ -6780,7 +6785,7 @@ function renderWallWeather(weather) {
           <span class="wall-weather__desc">${esc(desc)}${city ? ` · ${esc(city)}` : ''}</span>
         </span>
       </div>
-      ${days ? `<ol class="wall-weather__forecast">${days}</ol>` : ''}
+      ${hourlyHtml || (days ? `<ol class="wall-weather__forecast">${days}</ol>` : '')}
     </section>`;
 }
 
@@ -6896,6 +6901,9 @@ function wireWallSurface(container, rerender, signal) {
   signal.addEventListener('abort', () => clearTimeout(awakeTimer));
 
   wireWallTimer(wall, rerender, signal, { announce: announceDashboard });
+  wireWeatherHourlyNav(container, signal, {
+    remount: () => remountWallWeather(container, signal),
+  });
 
   wall.querySelector('#wall-screensaver-start')?.addEventListener('click', async () => {
     const { preview } = await import('/components/photo-screensaver.js');
@@ -8855,7 +8863,11 @@ function remountWeatherWidget(container, weather, signal, onUpdated = _weatherRe
   wireWeatherHourlyNav(container, signal);
 }
 
-function wireWeatherHourlyNav(container, signal) {
+/**
+ * Tag-Schritt an der Stundenkurve. `remount` tauscht die konkrete Flaeche
+ * (Dashboard-Kachel oder Wand-Wetter); fehlt er, gilt die Kachel.
+ */
+function wireWeatherHourlyNav(container, signal, { remount = null } = {}) {
   const root = container.querySelector('[data-weather-hourly-nav]');
   if (!root) return;
   root.querySelectorAll('[data-weather-hourly-step]').forEach((btn) => {
@@ -8871,10 +8883,25 @@ function wireWeatherHourlyNav(container, signal) {
       const next = keys[idx + delta];
       if (!next || next === current) return;
       _weatherHourlyDateKey = next;
-      remountWeatherWidget(container, weather, signal);
-      // Fokus auf denselben Richtungsknopf behalten (falls noch da).
+      if (typeof remount === 'function') remount();
+      else remountWeatherWidget(container, weather, signal);
       container.querySelector(`[data-weather-hourly-step="${delta}"]`)?.focus();
     }, { signal });
+  });
+}
+
+/** Wand: nur den Wetterblock neu zeichnen (Tagwechsel ohne ganze Flaeche). */
+function remountWallWeather(container, signal) {
+  const weather = _weatherHourlyPayload;
+  const host = container.querySelector('.wall__weather');
+  if (!host || !weather) return;
+  const html = renderWallWeather(weather);
+  if (!html) return;
+  host.outerHTML = html.trim();
+  const next = container.querySelector('.wall__weather');
+  if (next && window.lucide) window.lucide.createIcons({ el: next });
+  wireWeatherHourlyNav(container, signal, {
+    remount: () => remountWallWeather(container, signal),
   });
 }
 
