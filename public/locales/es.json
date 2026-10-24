@@ -431,6 +431,8 @@
         "weatherHourlyPrecipMax": "Precipitación máx.",
         "weatherHourlyWind": "Viento",
         "weatherHourlyGust": "Ráfagas",
+        "weatherHourlyPrev": "Día anterior",
+        "weatherHourlyNext": "Día siguiente",
         "wallScreensaverNone": "Salvapantallas no disponible.",
         "wallScreensaverStart": "Salvapantallas"
     },

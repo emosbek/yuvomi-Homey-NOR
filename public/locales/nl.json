@@ -431,6 +431,8 @@
         "weatherHourlyPrecipMax": "Max. neerslag",
         "weatherHourlyWind": "Wind",
         "weatherHourlyGust": "Windstoten",
+        "weatherHourlyPrev": "Vorige dag",
+        "weatherHourlyNext": "Volgende dag",
         "wallScreensaverNone": "Schermbeveiliging niet beschikbaar.",
         "wallScreensaverStart": "Schermbeveiliging"
     },

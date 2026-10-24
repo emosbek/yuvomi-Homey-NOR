@@ -431,6 +431,8 @@
         "weatherHourlyPrecipMax": "अधिकतम वर्षा",
         "weatherHourlyWind": "हवा",
         "weatherHourlyGust": "झोंके",
+        "weatherHourlyPrev": "पिछला दिन",
+        "weatherHourlyNext": "अगला दिन",
         "wallScreensaverNone": "स्क्रीनसेवर उपलब्ध नहीं है।",
         "wallScreensaverStart": "स्क्रीनसेवर"
     },

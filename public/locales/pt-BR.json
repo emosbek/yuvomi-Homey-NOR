@@ -380,6 +380,8 @@
         "weatherHourlyPrecipMax": "Precipitação máx.",
         "weatherHourlyWind": "Vento",
         "weatherHourlyGust": "Rajadas",
+        "weatherHourlyPrev": "Dia anterior",
+        "weatherHourlyNext": "Próximo dia",
         "weekStripTitle": "Esta semana",
         "weekStripEmpty": "Nenhum evento nos próximos sete dias",
         "weekDayEvents": "{{count}} eventos",

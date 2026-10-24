@@ -160,13 +160,14 @@ test('buildMetNorwayWeather: hourly for today+tomorrow with icon and windDir', (
     hourFn: (iso) => Number(iso.slice(11, 13)),
   });
   assert.ok(Array.isArray(data.hourly));
-  assert.equal(data.hourly.length, 3); // day+1 only; 26th dropped
+  assert.equal(data.hourly.length, 4); // heute + Folgetage mit next_1_hours
   assert.equal(data.hourly[0].icon, 'cloud-rain');
   assert.equal(data.hourly[0].windDir, 220);
   assert.equal(data.hourly[0].gust, 29); // 8 m/s → km/h
   assert.equal(data.hourly[0].precip, 1.2);
   assert.equal(data.hourly[0].precipMax, 2.4);
   assert.equal(data.hourly[2].date, '2026-10-25');
+  assert.equal(data.hourly[3].date, '2026-10-26');
 });
 
 test('buildMetHourly: skips entries without next_1_hours', () => {

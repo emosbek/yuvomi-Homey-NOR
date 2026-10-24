@@ -173,12 +173,18 @@ export function buildMetNorwayWeather(body, opts = {}) {
   const city = opts.city
     || (opts.lat != null && opts.lon != null ? `${opts.lat}, ${opts.lon}` : 'MET Norway');
 
-  const tomorrowKey = shiftDateKey(todayKey, 1);
+  // Bis zu 6 Ortstage: Compact liefert echte Stunden (~48h) und danach oft
+  // nur 6h-Schritte ohne next_1_hours - die fallen in buildMetHourly weg.
+  const keepDates = new Set();
+  for (let i = 0; i < 6; i += 1) {
+    const key = shiftDateKey(todayKey, i);
+    if (key) keepDates.add(key);
+  }
   const hourly = buildMetHourly(series, {
     units,
     dateKeyFn,
     hourFn: opts.hourFn,
-    keepDates: new Set([todayKey, tomorrowKey].filter(Boolean)),
+    keepDates,
   });
 
   return {

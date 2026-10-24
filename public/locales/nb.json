@@ -431,6 +431,8 @@
         "weatherHourlyPrecipMax": "Maks nedbør",
         "weatherHourlyWind": "Vind",
         "weatherHourlyGust": "Vindkast",
+        "weatherHourlyPrev": "Forrige dag",
+        "weatherHourlyNext": "Neste dag",
         "wallScreensaverNone": "Skjermsparer ikke tilgjengelig.",
         "wallScreensaverStart": "Skjermsparer"
     },

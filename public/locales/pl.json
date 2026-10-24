@@ -529,6 +529,8 @@
         "weatherHourlyPrecipMax": "Maks. opady",
         "weatherHourlyWind": "Wiatr",
         "weatherHourlyGust": "Porywy",
+        "weatherHourlyPrev": "Poprzedni dzień",
+        "weatherHourlyNext": "Następny dzień",
         "wallScreensaverNone": "Wygaszacz ekranu jest niedostępny.",
         "wallScreensaverStart": "Wygaszacz ekranu"
     },

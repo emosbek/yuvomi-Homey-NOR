@@ -471,6 +471,8 @@
         "weatherHourlyPrecipMax": "Max. srážky",
         "weatherHourlyWind": "Vítr",
         "weatherHourlyGust": "Nárazy",
+        "weatherHourlyPrev": "Předchozí den",
+        "weatherHourlyNext": "Další den",
         "wallScreensaverNone": "Spořič obrazovky není dostupný.",
         "wallScreensaverStart": "Spořič obrazovky"
     },

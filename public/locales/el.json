@@ -431,6 +431,8 @@
         "weatherHourlyPrecipMax": "Μέγ. υετός",
         "weatherHourlyWind": "Άνεμος",
         "weatherHourlyGust": "Ριπές",
+        "weatherHourlyPrev": "Προηγούμενη ημέρα",
+        "weatherHourlyNext": "Επόμενη ημέρα",
         "wallScreensaverNone": "Η προφύλαξη οθόνης δεν είναι διαθέσιμη.",
         "wallScreensaverStart": "Προφύλαξη οθόνης"
     },

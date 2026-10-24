@@ -57,6 +57,24 @@ export function hourlyHorizon(hourly, todayKey) {
     });
 }
 
+/**
+ * Sorterte datoer i `hourly` som har minst to temperaturpunkter
+ * (kan steppe mellom dem i ekspandert view).
+ */
+export function drawableHourlyDates(hourly) {
+  if (!Array.isArray(hourly)) return [];
+  const byDate = new Map();
+  for (const h of hourly) {
+    if (!h?.date || !Number.isFinite(Number(h.hour))) continue;
+    if (!Number.isFinite(Number(h.temp))) continue;
+    byDate.set(h.date, (byDate.get(h.date) || 0) + 1);
+  }
+  return [...byDate.entries()]
+    .filter(([, n]) => n >= 2)
+    .map(([date]) => date)
+    .sort();
+}
+
 function dayLabelShort(dateKey, locale) {
   try {
     return new Intl.DateTimeFormat(locale || 'en', { weekday: 'short', day: 'numeric', month: 'short' })

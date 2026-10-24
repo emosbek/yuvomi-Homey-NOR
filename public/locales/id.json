@@ -449,6 +449,8 @@
         "weatherHourlyPrecipMax": "Curah hujan maks.",
         "weatherHourlyWind": "Angin",
         "weatherHourlyGust": "Hembusan",
+        "weatherHourlyPrev": "Hari sebelumnya",
+        "weatherHourlyNext": "Hari berikutnya",
         "wallScreensaverNone": "Screensaver tidak tersedia.",
         "wallScreensaverStart": "Screensaver"
     },

@@ -449,6 +449,8 @@
         "weatherHourlyPrecipMax": "Max na ulan",
         "weatherHourlyWind": "Hangin",
         "weatherHourlyGust": "Bugso",
+        "weatherHourlyPrev": "Nakaraang araw",
+        "weatherHourlyNext": "Susunod na araw",
         "wallScreensaverNone": "Hindi available ang screensaver.",
         "wallScreensaverStart": "Screensaver"
     },

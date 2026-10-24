@@ -511,6 +511,8 @@
         "weatherHourlyPrecipMax": "Макс. осадки",
         "weatherHourlyWind": "Ветер",
         "weatherHourlyGust": "Порывы",
+        "weatherHourlyPrev": "Предыдущий день",
+        "weatherHourlyNext": "Следующий день",
         "wallScreensaverNone": "Заставка недоступна.",
         "wallScreensaverStart": "Заставка"
     },

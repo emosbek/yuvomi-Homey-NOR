@@ -431,6 +431,8 @@
         "weatherHourlyPrecipMax": "Précipitations max.",
         "weatherHourlyWind": "Vent",
         "weatherHourlyGust": "Rafales",
+        "weatherHourlyPrev": "Jour précédent",
+        "weatherHourlyNext": "Jour suivant",
         "wallScreensaverNone": "Économiseur d'écran non disponible.",
         "wallScreensaverStart": "Économiseur d'écran"
     },

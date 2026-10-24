@@ -431,6 +431,8 @@
         "weatherHourlyPrecipMax": "Maks. yağış",
         "weatherHourlyWind": "Rüzgar",
         "weatherHourlyGust": "Sert rüzgar",
+        "weatherHourlyPrev": "Önceki gün",
+        "weatherHourlyNext": "Sonraki gün",
         "wallScreensaverNone": "Ekran koruyucu kullanılamıyor.",
         "wallScreensaverStart": "Ekran koruyucu"
     },

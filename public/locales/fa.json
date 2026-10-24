@@ -449,6 +449,8 @@
         "weatherHourlyPrecipMax": "حداکثر بارش",
         "weatherHourlyWind": "باد",
         "weatherHourlyGust": "تندباد",
+        "weatherHourlyPrev": "روز قبل",
+        "weatherHourlyNext": "روز بعد",
         "wallScreensaverNone": "محافظ صفحه در دسترس نیست.",
         "wallScreensaverStart": "محافظ صفحه"
     },

@@ -449,6 +449,8 @@
         "weatherHourlyPrecipMax": "Max. Niederschlag",
         "weatherHourlyWind": "Wind",
         "weatherHourlyGust": "Böen",
+        "weatherHourlyPrev": "Vorheriger Tag",
+        "weatherHourlyNext": "Nächster Tag",
         "wallScreensaverNone": "Bildschirmschoner nicht verfügbar.",
         "wallScreensaverStart": "Bildschirmschoner"
     },

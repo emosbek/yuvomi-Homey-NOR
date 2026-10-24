@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  drawableHourlyDates,
   hourlyForDate,
   hourlyHorizon,
   nextDateKey,
@@ -61,4 +62,13 @@ test('weatherHourlyChartMarkup: two panes, temp line, wind, legend', () => {
 test('weatherHourlyChartMarkup: needs at least two temps', () => {
   assert.equal(weatherHourlyChartMarkup([{ date: '2026-10-25', hour: 1, temp: 5, wind: 1, precip: 0 }]), '');
   assert.equal(weatherHourlyChartMarkup([]), '');
+});
+
+test('drawableHourlyDates: only days with at least two temps', () => {
+  assert.deepEqual(drawableHourlyDates(HOURLY), ['2026-10-25', '2026-10-26']);
+  assert.deepEqual(drawableHourlyDates([
+    { date: '2026-10-25', hour: 1, temp: 5 },
+    { date: '2026-10-26', hour: 1, temp: 6 },
+    { date: '2026-10-26', hour: 2, temp: 7 },
+  ]), ['2026-10-26']);
 });

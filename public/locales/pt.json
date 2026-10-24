@@ -431,6 +431,8 @@
         "weatherHourlyPrecipMax": "Precipitação máx.",
         "weatherHourlyWind": "Vento",
         "weatherHourlyGust": "Rajadas",
+        "weatherHourlyPrev": "Dia anterior",
+        "weatherHourlyNext": "Dia seguinte",
         "wallScreensaverNone": "Proteção de ecrã não disponível.",
         "wallScreensaverStart": "Proteção de ecrã"
     },

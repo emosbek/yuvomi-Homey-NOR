@@ -76,7 +76,9 @@ import { nextRewardGoal } from '/utils/reward-goal.js';
 import { reloadAfterSave } from '/utils/reload-after-save.js';
 import { shiftTypeLabel } from '/utils/shift-label.js';
 import {
-  hourlyHorizon,
+  drawableHourlyDates,
+  hourlyForDate,
+  nextDateKey,
   weatherHourlyChartMarkup,
 } from '/utils/weather-hourly-chart.js';
 
@@ -85,6 +87,8 @@ let _fabController = null;
 
 /** Ob die Stundenkurve auf dem Wetter-Widget der Uebersicht offen ist (Session). */
 let _weatherHourlyExpanded = false;
+/** Gewaehlter Tag (YYYY-MM-DD) in der aufgeklappten Stundenkurve. */
+let _weatherHourlyDateKey = null;
 /** Letzte Wetter-Payload mit `hourly` - fuer Auf-/Zuklappen ohne Neuabruf. */
 let _weatherHourlyPayload = null;
 /** onUpdated des Wetter-Refresh - ueberlebt Remount beim Aufklappen. */
@@ -5947,8 +5951,30 @@ function weatherHourlyDrawable(points) {
   return points.filter((p) => Number.isFinite(Number(p?.temp))).length >= 2;
 }
 
-function weatherHourlyPoints(weather) {
-  return hourlyHorizon(weather?.hourly, weather?.today?.date);
+function weatherHourlyDayKeys(weather) {
+  return drawableHourlyDates(weather?.hourly);
+}
+
+/** Aktueller Tag der Stundenkurve; faellt auf heute bzw. ersten nutzbaren Tag. */
+function resolveWeatherHourlyDateKey(weather) {
+  const keys = weatherHourlyDayKeys(weather);
+  if (!keys.length) return null;
+  if (_weatherHourlyDateKey && keys.includes(_weatherHourlyDateKey)) return _weatherHourlyDateKey;
+  const today = weather?.today?.date;
+  _weatherHourlyDateKey = (today && keys.includes(today)) ? today : keys[0];
+  return _weatherHourlyDateKey;
+}
+
+function weatherHourlyNavLabel(weather, dateKey) {
+  if (weatherIsToday(weather, dateKey)) return t('common.today');
+  const tomorrow = nextDateKey(weather?.today?.date);
+  if (dateKey && dateKey === tomorrow) return t('common.tomorrow');
+  try {
+    return new Intl.DateTimeFormat(getLocale(), { weekday: 'short', day: 'numeric', month: 'short' })
+      .format(new Date(`${dateKey}T12:00:00`));
+  } catch {
+    return dateKey;
+  }
 }
 
 function weatherHourlyChartOpts(units) {
@@ -5969,15 +5995,41 @@ function weatherHourlyChartOpts(units) {
 }
 
 /**
- * Yr-Stil ~48h-Kurve (Temp+Nedbør / Vind). Nur wenn aufgeklappt und Daten da.
+ * Ein Tag der Stundenkurve (Temp+Nedbør / Vind) mit Vor/Zurueck zwischen Tagen.
  */
 function renderWeatherHourlySection(weather) {
-  const points = weatherHourlyPoints(weather);
+  const keys = weatherHourlyDayKeys(weather);
+  const dateKey = resolveWeatherHourlyDateKey(weather);
+  if (!dateKey) return '';
+  const points = hourlyForDate(weather.hourly, dateKey);
   if (!weatherHourlyDrawable(points)) return '';
   const chart = weatherHourlyChartMarkup(points, weatherHourlyChartOpts(weather.units));
   if (!chart) return '';
+
+  const idx = keys.indexOf(dateKey);
+  const canPrev = idx > 0;
+  const canNext = idx >= 0 && idx < keys.length - 1;
+  const nav = keys.length > 1
+    ? `<div class="weather-hourly__nav" data-weather-hourly-nav>
+        <button type="button" class="btn btn--secondary btn--icon weather-hourly__step"
+                data-weather-hourly-step="-1"${canPrev ? '' : ' disabled'}
+                aria-label="${esc(t('dashboard.weatherHourlyPrev'))}">
+          <i data-lucide="chevron-left" class="icon-md" aria-hidden="true"></i>
+        </button>
+        <span class="weather-hourly__nav-label" data-weather-hourly-label>${esc(weatherHourlyNavLabel(weather, dateKey))}</span>
+        <button type="button" class="btn btn--secondary btn--icon weather-hourly__step"
+                data-weather-hourly-step="1"${canNext ? '' : ' disabled'}
+                aria-label="${esc(t('dashboard.weatherHourlyNext'))}">
+          <i data-lucide="chevron-right" class="icon-md" aria-hidden="true"></i>
+        </button>
+      </div>`
+    : `<div class="weather-hourly__nav weather-hourly__nav--solo">
+        <span class="weather-hourly__nav-label">${esc(weatherHourlyNavLabel(weather, dateKey))}</span>
+      </div>`;
+
   return `
-    <div class="weather-hourly" data-weather-hourly>
+    <div class="weather-hourly" data-weather-hourly data-weather-hourly-date="${esc(dateKey)}">
+      ${nav}
       <div class="weather-hourly__chart" data-weather-hourly-chart role="img" aria-label="${esc(t('dashboard.weatherHourlyChart'))}">
         ${chart}
       </div>
@@ -6002,7 +6054,7 @@ function renderWeatherWidget(weather, size = '1x1') {
   const descText = (desc) => weatherDescText(weather, desc);
   const iconHtml = (icon, cls, iconSize, desc) => weatherIconHtml(weather, icon, cls, iconSize, desc);
 
-  const canExpand = weatherHourlyDrawable(weatherHourlyPoints(weather));
+  const canExpand = weatherHourlyDayKeys(weather).length > 0;
   const expanded = canExpand && _weatherHourlyExpanded;
   const hourlyHtml = expanded ? renderWeatherHourlySection(weather) : '';
   const showHourly = Boolean(hourlyHtml);
@@ -8433,6 +8485,7 @@ export async function render(container, { user, signal: routeSignal = null } = {
       rebuildDashboard(cfg);
     }, signal);
     wireWeatherExpand(container, signal);
+    wireWeatherHourlyNav(container, signal);
     container.querySelector('#dashboard-search')?.addEventListener('click', () => {
       window.yuvomi?.openSearch?.();
     }, { signal: signal });
@@ -8799,6 +8852,30 @@ function remountWeatherWidget(container, weather, signal, onUpdated = _weatherRe
   if (newWidget && window.lucide) window.lucide.createIcons({ el: newWidget });
   wireWeatherRefresh(container, onUpdated, signal);
   wireWeatherExpand(container, signal);
+  wireWeatherHourlyNav(container, signal);
+}
+
+function wireWeatherHourlyNav(container, signal) {
+  const root = container.querySelector('[data-weather-hourly-nav]');
+  if (!root) return;
+  root.querySelectorAll('[data-weather-hourly-step]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const weather = _weatherHourlyPayload;
+      if (!weather) return;
+      const keys = weatherHourlyDayKeys(weather);
+      const current = resolveWeatherHourlyDateKey(weather);
+      const idx = keys.indexOf(current);
+      if (idx < 0) return;
+      const delta = Number(btn.dataset.weatherHourlyStep) || 0;
+      const next = keys[idx + delta];
+      if (!next || next === current) return;
+      _weatherHourlyDateKey = next;
+      remountWeatherWidget(container, weather, signal);
+      // Fokus auf denselben Richtungsknopf behalten (falls noch da).
+      container.querySelector(`[data-weather-hourly-step="${delta}"]`)?.focus();
+    }, { signal });
+  });
 }
 
 function wireWeatherExpand(container, signal) {
@@ -8808,6 +8885,9 @@ function wireWeatherExpand(container, signal) {
   const toggle = () => {
     if (!_weatherHourlyPayload) return;
     _weatherHourlyExpanded = !_weatherHourlyExpanded;
+    if (_weatherHourlyExpanded && !_weatherHourlyDateKey) {
+      resolveWeatherHourlyDateKey(_weatherHourlyPayload);
+    }
     remountWeatherWidget(container, _weatherHourlyPayload, signal);
   };
 

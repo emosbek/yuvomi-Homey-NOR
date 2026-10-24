@@ -210,9 +210,9 @@ test('Open-Meteo via env: provider + city + cloud-sun icon + wmo desc + forecast
     const fc = body.data.forecast;
     assert.ok(Array.isArray(fc) && fc.length > 0);
     for (const k of ['date', 'temp_min', 'temp_max', 'icon', 'desc']) assert.ok(k in fc[0]);
-    // Heute+morgen: 05. und 06. Juni; der 07. faellt weg.
+    // forecast_days=6: alle Stundenpunkte der Mock-Antwort (05.–07. Juni).
     assert.ok(Array.isArray(body.data.hourly));
-    assert.equal(body.data.hourly.length, 3);
+    assert.equal(body.data.hourly.length, 4);
     assert.equal(body.data.hourly[0].icon, 'cloud-sun');
     assert.equal(body.data.hourly[1].icon, 'cloud-rain');
     assert.equal(body.data.hourly[1].gust, 22);

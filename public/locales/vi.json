@@ -431,6 +431,8 @@
         "weatherHourlyPrecipMax": "Mưa tối đa",
         "weatherHourlyWind": "Gió",
         "weatherHourlyGust": "Gió giật",
+        "weatherHourlyPrev": "Ngày trước",
+        "weatherHourlyNext": "Ngày sau",
         "wallScreensaverNone": "Trình bảo vệ màn hình không khả dụng.",
         "wallScreensaverStart": "Trình bảo vệ màn hình"
     },

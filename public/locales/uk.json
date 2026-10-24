@@ -511,6 +511,8 @@
         "weatherHourlyPrecipMax": "Макс. опади",
         "weatherHourlyWind": "Вітер",
         "weatherHourlyGust": "Пориви",
+        "weatherHourlyPrev": "Попередній день",
+        "weatherHourlyNext": "Наступний день",
         "wallScreensaverNone": "Заставка недоступна.",
         "wallScreensaverStart": "Заставка"
     },

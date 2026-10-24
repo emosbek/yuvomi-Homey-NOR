@@ -551,6 +551,8 @@
         "weatherHourlyPrecipMax": "أقصى هطول",
         "weatherHourlyWind": "الرياح",
         "weatherHourlyGust": "هبات",
+        "weatherHourlyPrev": "اليوم السابق",
+        "weatherHourlyNext": "اليوم التالي",
         "wallScreensaverNone": "شاشة التوقف غير متاحة.",
         "wallScreensaverStart": "شاشة التوقف"
     },

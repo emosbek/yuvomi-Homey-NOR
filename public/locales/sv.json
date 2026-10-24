@@ -431,6 +431,8 @@
         "weatherHourlyPrecipMax": "Max nederbörd",
         "weatherHourlyWind": "Vind",
         "weatherHourlyGust": "Byar",
+        "weatherHourlyPrev": "Föregående dag",
+        "weatherHourlyNext": "Nästa dag",
         "wallScreensaverNone": "Skärmsläckare ej tillgänglig.",
         "wallScreensaverStart": "Skärmsläckare"
     },

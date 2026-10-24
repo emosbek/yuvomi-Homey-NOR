@@ -431,6 +431,8 @@
         "weatherHourlyPrecipMax": "最大降水",
         "weatherHourlyWind": "风",
         "weatherHourlyGust": "阵风",
+        "weatherHourlyPrev": "上一天",
+        "weatherHourlyNext": "下一天",
         "wallScreensaverNone": "屏幕保护程序不可用。",
         "wallScreensaverStart": "屏幕保护"
     },

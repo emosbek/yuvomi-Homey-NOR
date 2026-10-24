@@ -449,6 +449,8 @@
         "weatherHourlyPrecipMax": "최대 강수",
         "weatherHourlyWind": "바람",
         "weatherHourlyGust": "돌풍",
+        "weatherHourlyPrev": "이전 날",
+        "weatherHourlyNext": "다음 날",
         "wallScreensaverNone": "화면 보호기를 사용할 수 없습니다.",
         "wallScreensaverStart": "화면 보호기"
     },

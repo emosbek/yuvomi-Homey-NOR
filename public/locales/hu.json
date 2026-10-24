@@ -431,6 +431,8 @@
         "weatherHourlyPrecipMax": "Max. csapadék",
         "weatherHourlyWind": "Szél",
         "weatherHourlyGust": "Széllökés",
+        "weatherHourlyPrev": "Előző nap",
+        "weatherHourlyNext": "Következő nap",
         "wallScreensaverNone": "A képernyővédő nem érhető el.",
         "wallScreensaverStart": "Képernyővédő"
     },

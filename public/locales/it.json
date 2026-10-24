@@ -431,6 +431,8 @@
         "weatherHourlyPrecipMax": "Precipitazioni max.",
         "weatherHourlyWind": "Vento",
         "weatherHourlyGust": "Raffiche",
+        "weatherHourlyPrev": "Giorno precedente",
+        "weatherHourlyNext": "Giorno successivo",
         "wallScreensaverNone": "Salvaschermo non disponibile.",
         "wallScreensaverStart": "Salvaschermo"
     },

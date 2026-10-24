@@ -431,6 +431,8 @@
         "weatherHourlyPrecipMax": "最大降水",
         "weatherHourlyWind": "風",
         "weatherHourlyGust": "突風",
+        "weatherHourlyPrev": "前の日",
+        "weatherHourlyNext": "次の日",
         "wallScreensaverNone": "スクリーンセーバーを開始できません。",
         "wallScreensaverStart": "スクリーンセーバー"
     },

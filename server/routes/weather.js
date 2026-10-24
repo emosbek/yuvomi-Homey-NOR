@@ -70,16 +70,25 @@ function omPrecipDisplay(amt, units) {
   return units === 'imperial' ? Math.round(v * 100) / 100 : Math.round(v * 10) / 10;
 }
 
+/** Heute + folgende Kalendertage (Default 6 = gleiche Weite wie forecast_days). */
+function omHourlyKeepDates(todayKey, dayCount = 6) {
+  const keep = new Set();
+  for (let i = 0; i < dayCount; i += 1) {
+    const key = i === 0 ? todayKey : shiftOmDateKey(todayKey, i);
+    if (key) keep.add(key);
+  }
+  return keep;
+}
+
 /**
- * Open-Meteo-Stunden fuer heute und morgen (Ortszeit dank timezone=auto).
+ * Open-Meteo-Stunden fuer heute und die naechsten Tage (Ortszeit dank timezone=auto).
  * Schneefall markiert `snow`, sonst gilt `precipitation` als Regen.
  * Icon / Boeen / Windrichtung fuer die Yr-Stil-Stundenkurve.
  */
-export function buildOpenMeteoHourly(om, todayKey, units = 'metric') {
+export function buildOpenMeteoHourly(om, todayKey, units = 'metric', dayCount = 6) {
   const times = om?.hourly?.time;
   if (!Array.isArray(times) || !todayKey) return [];
-  const tomorrowKey = shiftOmDateKey(todayKey, 1);
-  const keep = new Set([todayKey, tomorrowKey].filter(Boolean));
+  const keep = omHourlyKeepDates(todayKey, dayCount);
   const temps = om.hourly.temperature_2m ?? [];
   const winds = om.hourly.wind_speed_10m ?? [];
   const gusts = om.hourly.wind_gusts_10m ?? [];
