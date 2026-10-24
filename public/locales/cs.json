@@ -463,6 +463,14 @@
         "nutritionEntries_one": "Dnes {{count}} záznam",
         "nutritionEntries_few": "Dnes {{count}} záznamy",
         "weatherUnavailable": "Počasí momentálně není k dispozici",
+        "weatherHourlyChart": "Hodinová teplota, srážky a vítr",
+        "weatherHourlyShow": "Zobrazit hodinovou předpověď",
+        "weatherHourlyHide": "Skrýt hodinovou předpověď",
+        "weatherHourlyTemp": "Teplota",
+        "weatherHourlyPrecip": "Srážky",
+        "weatherHourlyPrecipMax": "Max. srážky",
+        "weatherHourlyWind": "Vítr",
+        "weatherHourlyGust": "Nárazy",
         "wallScreensaverNone": "Spořič obrazovky není dostupný.",
         "wallScreensaverStart": "Spořič obrazovky"
     },
@@ -3465,7 +3473,7 @@
         "permIntroMore": "Jednotliví členové se mohou od výchozího nastavení role lišit. Bez nastavení má každá role plný přístup; správci vždy.",
         "weatherProviderMetNorway": "MET Norway (api.met.no)",
         "weatherProviderLabel": "Weather data source",
-        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast) — good for Norway, works worldwide, no API key."
+        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast), good for Norway, works worldwide, no API key."
     },
     "login": {
         "tagline": "Vítejte zpět. Váš domov na jednom místě.",

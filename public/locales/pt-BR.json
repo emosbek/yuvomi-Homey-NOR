@@ -372,6 +372,14 @@
         "nutritionEntries": "{{count}} registros hoje",
         "nutritionEntries_one": "{{count}} registro hoje",
         "weatherUnavailable": "Clima indisponível no momento",
+        "weatherHourlyChart": "Temperatura, precipitação e vento por hora",
+        "weatherHourlyShow": "Mostrar previsão horária",
+        "weatherHourlyHide": "Ocultar previsão horária",
+        "weatherHourlyTemp": "Temperatura",
+        "weatherHourlyPrecip": "Precipitação",
+        "weatherHourlyPrecipMax": "Precipitação máx.",
+        "weatherHourlyWind": "Vento",
+        "weatherHourlyGust": "Rajadas",
         "weekStripTitle": "Esta semana",
         "weekStripEmpty": "Nenhum evento nos próximos sete dias",
         "weekDayEvents": "{{count}} eventos",
@@ -3359,7 +3367,7 @@
         "permIntroMore": "Cada membro pode divergir do padrão da função. Sem configuração, cada função tem acesso completo; os administradores sempre.",
         "weatherProviderMetNorway": "MET Norway (api.met.no)",
         "weatherProviderLabel": "Weather data source",
-        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast) — good for Norway, works worldwide, no API key."
+        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast), good for Norway, works worldwide, no API key."
     },
     "login": {
         "tagline": "Bem-vindo de volta. Sua casa em um só lugar.",

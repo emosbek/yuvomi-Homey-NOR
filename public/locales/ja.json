@@ -423,6 +423,14 @@
         "nutritionEntries": "今日の記録 {{count}} 件",
         "nutritionEntries_one": "今日の記録 {{count}} 件",
         "weatherUnavailable": "現在、天気を取得できません",
+        "weatherHourlyChart": "時間ごとの気温・降水・風",
+        "weatherHourlyShow": "時間ごとの予報を表示",
+        "weatherHourlyHide": "時間ごとの予報を非表示",
+        "weatherHourlyTemp": "気温",
+        "weatherHourlyPrecip": "降水",
+        "weatherHourlyPrecipMax": "最大降水",
+        "weatherHourlyWind": "風",
+        "weatherHourlyGust": "突風",
         "wallScreensaverNone": "スクリーンセーバーを開始できません。",
         "wallScreensaverStart": "スクリーンセーバー"
     },
@@ -3359,7 +3367,7 @@
         "permIntroMore": "個々のメンバーは役割の既定値と異なる設定にできます。未設定の場合、すべての役割がフルアクセスを持ち、管理者は常にフルアクセスです。",
         "weatherProviderMetNorway": "MET Norway (api.met.no)",
         "weatherProviderLabel": "Weather data source",
-        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast) — good for Norway, works worldwide, no API key."
+        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast), good for Norway, works worldwide, no API key."
     },
     "login": {
         "tagline": "おかえりなさい。暮らしのことを一か所に。",

@@ -423,6 +423,14 @@
         "nutritionEntries": "{{count}} mục hôm nay",
         "nutritionEntries_one": "{{count}} mục hôm nay",
         "weatherUnavailable": "Hiện không có dữ liệu thời tiết",
+        "weatherHourlyChart": "Nhiệt độ, mưa và gió theo giờ",
+        "weatherHourlyShow": "Hiện dự báo theo giờ",
+        "weatherHourlyHide": "Ẩn dự báo theo giờ",
+        "weatherHourlyTemp": "Nhiệt độ",
+        "weatherHourlyPrecip": "Mưa",
+        "weatherHourlyPrecipMax": "Mưa tối đa",
+        "weatherHourlyWind": "Gió",
+        "weatherHourlyGust": "Gió giật",
         "wallScreensaverNone": "Trình bảo vệ màn hình không khả dụng.",
         "wallScreensaverStart": "Trình bảo vệ màn hình"
     },
@@ -3359,7 +3367,7 @@
         "permIntroMore": "Từng thành viên có thể khác với mặc định của vai trò. Nếu không đặt gì, mỗi vai trò có toàn quyền truy cập; quản trị viên luôn luôn.",
         "weatherProviderMetNorway": "MET Norway (api.met.no)",
         "weatherProviderLabel": "Weather data source",
-        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast) — good for Norway, works worldwide, no API key."
+        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast), good for Norway, works worldwide, no API key."
     },
     "login": {
         "tagline": "Chào mừng bạn trở lại. Ngôi nhà của bạn ở cùng một nơi.",

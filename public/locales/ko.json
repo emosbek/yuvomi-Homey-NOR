@@ -441,6 +441,14 @@
         "nutritionEntries": "오늘 기록 {{count}}건",
         "nutritionEntries_one": "오늘 기록 {{count}}건",
         "weatherUnavailable": "현재 날씨를 불러올 수 없습니다",
+        "weatherHourlyChart": "시간별 기온, 강수, 바람",
+        "weatherHourlyShow": "시간별 예보 표시",
+        "weatherHourlyHide": "시간별 예보 숨기기",
+        "weatherHourlyTemp": "기온",
+        "weatherHourlyPrecip": "강수",
+        "weatherHourlyPrecipMax": "최대 강수",
+        "weatherHourlyWind": "바람",
+        "weatherHourlyGust": "돌풍",
         "wallScreensaverNone": "화면 보호기를 사용할 수 없습니다.",
         "wallScreensaverStart": "화면 보호기"
     },
@@ -3377,7 +3385,7 @@
         "permIntroMore": "개별 구성원은 역할 기본값과 다르게 설정할 수 있습니다. 설정하지 않으면 모든 역할이 전체 접근 권한을 가지며 관리자는 항상 전체 접근 권한을 가집니다.",
         "weatherProviderMetNorway": "MET Norway (api.met.no)",
         "weatherProviderLabel": "Weather data source",
-        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast) — good for Norway, works worldwide, no API key."
+        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast), good for Norway, works worldwide, no API key."
     },
     "login": {
         "tagline": "다시 오신 것을 환영합니다. 우리 집의 모든 일을 한곳에서.",

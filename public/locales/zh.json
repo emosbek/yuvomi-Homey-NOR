@@ -423,6 +423,14 @@
         "nutritionEntries": "今天 {{count}} 条记录",
         "nutritionEntries_one": "今天 {{count}} 条记录",
         "weatherUnavailable": "天气暂时不可用",
+        "weatherHourlyChart": "每小时气温、降水和风力",
+        "weatherHourlyShow": "显示每小时预报",
+        "weatherHourlyHide": "隐藏每小时预报",
+        "weatherHourlyTemp": "气温",
+        "weatherHourlyPrecip": "降水",
+        "weatherHourlyPrecipMax": "最大降水",
+        "weatherHourlyWind": "风",
+        "weatherHourlyGust": "阵风",
         "wallScreensaverNone": "屏幕保护程序不可用。",
         "wallScreensaverStart": "屏幕保护"
     },
@@ -3359,7 +3367,7 @@
         "permIntroMore": "各个成员可以不同于角色的默认设置。若不设置，每个角色都拥有完全访问权限；管理员始终如此。",
         "weatherProviderMetNorway": "MET Norway (api.met.no)",
         "weatherProviderLabel": "Weather data source",
-        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast) — good for Norway, works worldwide, no API key."
+        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast), good for Norway, works worldwide, no API key."
     },
     "login": {
         "tagline": "欢迎回来。您的家，尽在一处。",

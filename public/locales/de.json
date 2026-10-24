@@ -441,6 +441,14 @@
         "nutritionEntries": "{{count}} Einträge heute",
         "nutritionEntries_one": "{{count}} Eintrag heute",
         "weatherUnavailable": "Wetter gerade nicht verfügbar",
+        "weatherHourlyChart": "Stündliche Temperatur, Niederschlag und Wind",
+        "weatherHourlyShow": "Stündliche Vorhersage anzeigen",
+        "weatherHourlyHide": "Stündliche Vorhersage ausblenden",
+        "weatherHourlyTemp": "Temperatur",
+        "weatherHourlyPrecip": "Niederschlag",
+        "weatherHourlyPrecipMax": "Max. Niederschlag",
+        "weatherHourlyWind": "Wind",
+        "weatherHourlyGust": "Böen",
         "wallScreensaverNone": "Bildschirmschoner nicht verfügbar.",
         "wallScreensaverStart": "Bildschirmschoner"
     },
@@ -3377,7 +3385,7 @@
         "permIntroMore": "Einzelne Mitglieder können vom Rollen-Standard abweichen. Ohne Einstellung hat jede Rolle vollen Zugriff; Administratoren immer.",
         "weatherProviderMetNorway": "MET Norway (api.met.no)",
         "weatherProviderLabel": "Wetterdatenquelle",
-        "weatherProviderHint": "Open-Meteo ist der weltweite Standard. MET Norway nutzt die Locationforecast des Norwegischen Meteorologischen Instituts — gut für Norwegen, weltweit nutzbar, kein API-Schlüssel."
+        "weatherProviderHint": "Open-Meteo ist der weltweite Standard. MET Norway nutzt die Locationforecast des Norwegischen Meteorologischen Instituts, gut für Norwegen, weltweit nutzbar, kein API-Schlüssel."
     },
     "login": {
         "tagline": "Willkommen zurück. Dein Zuhause an einem Ort.",

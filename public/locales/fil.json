@@ -441,6 +441,14 @@
         "nutritionEntries": "{{count}} tala ngayong araw",
         "nutritionEntries_one": "{{count}} tala ngayong araw",
         "weatherUnavailable": "Hindi available ang panahon sa ngayon",
+        "weatherHourlyChart": "Oras-oras na temperatura, ulan at hangin",
+        "weatherHourlyShow": "Ipakita ang oras-oras na forecast",
+        "weatherHourlyHide": "Itago ang oras-oras na forecast",
+        "weatherHourlyTemp": "Temperatura",
+        "weatherHourlyPrecip": "Ulan",
+        "weatherHourlyPrecipMax": "Max na ulan",
+        "weatherHourlyWind": "Hangin",
+        "weatherHourlyGust": "Bugso",
         "wallScreensaverNone": "Hindi available ang screensaver.",
         "wallScreensaverStart": "Screensaver"
     },
@@ -3377,7 +3385,7 @@
         "permIntroMore": "Maaaring magkaiba ang mga indibidwal na miyembro sa default ng papel. Kapag walang nakatakda, may buong access ang bawat papel; palaging mayroon nito ang mga administrator.",
         "weatherProviderMetNorway": "MET Norway (api.met.no)",
         "weatherProviderLabel": "Weather data source",
-        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast) — good for Norway, works worldwide, no API key."
+        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast), good for Norway, works worldwide, no API key."
     },
     "login": {
         "tagline": "Maligayang pagbabalik. Ang iyong tahanan sa iisang lugar.",

@@ -423,6 +423,14 @@
         "nutritionEntries": "Ma {{count}} bejegyzés",
         "nutritionEntries_one": "Ma {{count}} bejegyzés",
         "weatherUnavailable": "Az időjárás jelenleg nem érhető el",
+        "weatherHourlyChart": "Óránkénti hőmérséklet, csapadék és szél",
+        "weatherHourlyShow": "Óránkénti előrejelzés megjelenítése",
+        "weatherHourlyHide": "Óránkénti előrejelzés elrejtése",
+        "weatherHourlyTemp": "Hőmérséklet",
+        "weatherHourlyPrecip": "Csapadék",
+        "weatherHourlyPrecipMax": "Max. csapadék",
+        "weatherHourlyWind": "Szél",
+        "weatherHourlyGust": "Széllökés",
         "wallScreensaverNone": "A képernyővédő nem érhető el.",
         "wallScreensaverStart": "Képernyővédő"
     },
@@ -3359,7 +3367,7 @@
         "permIntroMore": "Az egyes tagok eltérhetnek a szerep alapértelmezésétől. Beállítás nélkül minden szerep teljes hozzáférést kap; a rendszergazdák mindig.",
         "weatherProviderMetNorway": "MET Norway (api.met.no)",
         "weatherProviderLabel": "Weather data source",
-        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast) — good for Norway, works worldwide, no API key."
+        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast), good for Norway, works worldwide, no API key."
     },
     "login": {
         "tagline": "Üdv újra! Az otthon ügyei egy helyen.",

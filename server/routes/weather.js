@@ -57,6 +57,66 @@ function wmoIcon(code, isDay = true) {
   return 'cloud-lightning';                            // 95–99 thunderstorm
 }
 
+function shiftOmDateKey(dateKey, days) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateKey ?? ''));
+  if (!m) return null;
+  const ms = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) + days * 86400000;
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+function omPrecipDisplay(amt, units) {
+  const v = Number(amt) || 0;
+  if (!(v > 0)) return 0;
+  return units === 'imperial' ? Math.round(v * 100) / 100 : Math.round(v * 10) / 10;
+}
+
+/**
+ * Open-Meteo-Stunden fuer heute und morgen (Ortszeit dank timezone=auto).
+ * Schneefall markiert `snow`, sonst gilt `precipitation` als Regen.
+ * Icon / Boeen / Windrichtung fuer die Yr-Stil-Stundenkurve.
+ */
+export function buildOpenMeteoHourly(om, todayKey, units = 'metric') {
+  const times = om?.hourly?.time;
+  if (!Array.isArray(times) || !todayKey) return [];
+  const tomorrowKey = shiftOmDateKey(todayKey, 1);
+  const keep = new Set([todayKey, tomorrowKey].filter(Boolean));
+  const temps = om.hourly.temperature_2m ?? [];
+  const winds = om.hourly.wind_speed_10m ?? [];
+  const gusts = om.hourly.wind_gusts_10m ?? [];
+  const windDirs = om.hourly.wind_direction_10m ?? [];
+  const precip = om.hourly.precipitation ?? [];
+  const snow = om.hourly.snowfall ?? [];
+  const codes = om.hourly.weather_code ?? [];
+  const out = [];
+  for (let i = 0; i < times.length; i += 1) {
+    const stamp = String(times[i] ?? '');
+    const date = stamp.slice(0, 10);
+    if (!keep.has(date)) continue;
+    const hour = Number(stamp.slice(11, 13));
+    if (!Number.isFinite(hour)) continue;
+    const snowAmt = Number(snow[i]) || 0;
+    const precipAmt = Number(precip[i]) || 0;
+    const code = Number(codes[i]);
+    // Grobe Tageslicht-Schaetzung: Open-Meteo liefert hier kein is_day pro Stunde.
+    const isDay = hour >= 6 && hour < 22;
+    const gust = Number(gusts[i]);
+    const windDir = Number(windDirs[i]);
+    out.push({
+      date,
+      hour,
+      temp: Number.isFinite(Number(temps[i])) ? Math.round(Number(temps[i])) : null,
+      wind: Number.isFinite(Number(winds[i])) ? Math.round(Number(winds[i])) : 0,
+      gust: Number.isFinite(gust) ? Math.round(gust) : null,
+      windDir: Number.isFinite(windDir) ? Math.round(windDir) : null,
+      precip: omPrecipDisplay(precipAmt, units),
+      precipMax: null,
+      snow: snowAmt > 0,
+      icon: Number.isFinite(code) ? wmoIcon(code, isDay) : null,
+    });
+  }
+  return out;
+}
+
 // ----------------------------------------------------------------
 // Read a sync_config key from DB (safe — returns null on any error)
 // ----------------------------------------------------------------
@@ -289,16 +349,19 @@ export function buildRouter({ cfgGet: cfgGetFn = cfgGet, fetchFn = null, logger 
       if (provider === 'open-meteo') {
         const tempUnit  = units === 'imperial' ? 'fahrenheit' : 'celsius';
         const windUnit  = units === 'imperial' ? 'mph' : 'kmh';
+        const precipUnit = units === 'imperial' ? 'inch' : 'mm';
         const url = [
           'https://api.open-meteo.com/v1/forecast',
           `?latitude=${encodeURIComponent(lat)}`,
           `&longitude=${encodeURIComponent(lon)}`,
           '&current=temperature_2m,apparent_temperature,relative_humidity_2m,is_day,weather_code,wind_speed_10m',
           '&daily=weather_code,temperature_2m_max,temperature_2m_min',
+          '&hourly=temperature_2m,precipitation,snowfall,wind_speed_10m,wind_gusts_10m,wind_direction_10m,weather_code',
           '&timezone=auto',
           '&forecast_days=6',
           `&temperature_unit=${tempUnit}`,
           `&wind_speed_unit=${windUnit}`,
+          `&precipitation_unit=${precipUnit}`,
         ].join('');
 
         const omRes = await doFetch(url, { signal: AbortSignal.timeout(8000) });
@@ -340,6 +403,7 @@ export function buildRouter({ cfgGet: cfgGetFn = cfgGet, fetchFn = null, logger 
           },
           today: days.find((d) => d.date === omToday) ?? null,
           forecast: days.filter((d) => d.date > omToday).slice(0, 5),
+          hourly: buildOpenMeteoHourly(om, omToday, units),
         };
       } else if (provider === 'met-norway') {
         const metLat = roundMetCoord(lat);
@@ -369,6 +433,11 @@ export function buildRouter({ cfgGet: cfgGetFn = cfgGet, fetchFn = null, logger 
           lat: metLat,
           lon: metLon,
           dateKeyFn,
+          hourFn: (iso) => {
+            const wall = utcToWall(iso, tz);
+            if (!wall?.time) return 0;
+            return Number(String(wall.time).slice(0, 2)) || 0;
+          },
         });
         if (!data) {
           logOnce('met-norway:empty', 'MET Norway returned no usable timeseries - no weather');
@@ -486,6 +555,8 @@ export function buildRouter({ cfgGet: cfgGetFn = cfgGet, fetchFn = null, logger 
           },
           today: todayDay,
           forecast: forecastDays,
+          // OWM liefert nur 3-Stunden-Schritte - keine Stundenkurve im 2x2-Widget.
+          hourly: [],
         };
       }
 

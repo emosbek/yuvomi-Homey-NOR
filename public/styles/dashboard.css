@@ -1793,6 +1793,207 @@ svg.weather-forecast__icon {
   color: var(--color-text-secondary);
 }
 
+/* ── Stundenkurve (Klick auf Wetterkarte): Yr-Stil Temp+Nedbør / Vind ─────
+ * Aufgeklappt ersetzt die 5-Tage-Leiste. Zusammengeklappt bleibt die Karte. */
+.weather-widget--expandable .weather-widget__inner[data-weather-expand] {
+  cursor: pointer;
+  border-radius: var(--radius-md, 8px);
+}
+
+.weather-widget--expandable .weather-widget__inner[data-weather-expand]:focus-visible {
+  outline: 2px solid var(--color-focus-ring, var(--color-accent));
+  outline-offset: 2px;
+}
+
+.weather-widget--hourly .weather-widget__inner {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: var(--space-3);
+}
+
+.weather-hourly {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.weather-hourly__chart {
+  min-width: 0;
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.weather-hourly-chart-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: min(100%, 28rem);
+}
+
+.weather-hourly-chart {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.weather-hourly-chart__temp {
+  stroke: var(--weather-band-warm, #b45309);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.weather-hourly-chart__wind {
+  stroke: var(--weather-band-cold, #6d28d9);
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.weather-hourly-chart__gust {
+  stroke: var(--weather-band-cold, #6d28d9);
+  stroke-width: 1.25;
+  stroke-dasharray: 4 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.75;
+}
+
+.weather-hourly-chart__rain {
+  fill: color-mix(in oklab, var(--weather-rain, #2563eb) 70%, transparent);
+}
+
+.weather-hourly-chart__precip-max {
+  fill: color-mix(in oklab, var(--weather-rain, #93c5fd) 45%, transparent);
+  stroke: color-mix(in oklab, var(--weather-rain, #2563eb) 35%, transparent);
+  stroke-width: 0.5;
+  stroke-dasharray: 2 1.5;
+}
+
+.weather-hourly-chart__snow {
+  fill: color-mix(in oklab, var(--weather-snow, var(--color-text-secondary)) 65%, transparent);
+}
+
+.weather-hourly-chart__day-rule {
+  stroke: var(--color-border-subtle, var(--color-border));
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0.7;
+}
+
+.weather-hourly-chart__day-label {
+  fill: var(--color-text-secondary);
+  font-size: 10px;
+  font-weight: var(--font-weight-semibold);
+}
+
+.weather-hourly-chart__precip-axis {
+  fill: var(--weather-rain, #2563eb);
+}
+
+.weather-hourly-chart__wind-axis {
+  fill: var(--weather-band-cold, #6d28d9);
+}
+
+.weather-hourly-chart__icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  color: var(--color-text-secondary);
+  pointer-events: none;
+}
+
+.weather-hourly-chart__icon,
+svg.weather-hourly-chart__icon {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+}
+
+.weather-hourly__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+}
+
+.weather-hourly__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.weather-hourly__legend-item::before {
+  content: '';
+  width: 12px;
+  height: 2px;
+  border-radius: 1px;
+  background: currentColor;
+}
+
+.weather-hourly__legend-item--temp::before {
+  background: var(--weather-band-warm, #b45309);
+}
+
+.weather-hourly__legend-item--precip::before {
+  width: 8px;
+  height: 8px;
+  background: color-mix(in oklab, var(--weather-rain, #2563eb) 70%, transparent);
+}
+
+.weather-hourly__legend-item--precip-max::before {
+  width: 8px;
+  height: 8px;
+  background: color-mix(in oklab, var(--weather-rain, #93c5fd) 45%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--weather-rain, #2563eb) 35%, transparent);
+}
+
+.weather-hourly__legend-item--wind::before {
+  background: var(--weather-band-cold, #6d28d9);
+}
+
+.weather-hourly__legend-item--gust::before {
+  background: linear-gradient(
+    90deg,
+    var(--weather-band-cold, #6d28d9) 0 40%,
+    transparent 40% 60%,
+    var(--weather-band-cold, #6d28d9) 60% 100%
+  );
+  opacity: 0.75;
+}
+
+/* 1x1: Forecast bleibt weg, aufgeklappte Kurve darf aber sichtbar sein. */
+.widget-size--1x1 > .weather-widget.weather-widget--hourly .weather-hourly {
+  display: flex;
+}
+
+.widget-size--1x1 > .weather-widget.weather-widget--hourly .weather-widget__glyph {
+  display: none;
+}
+
+/* Gegen die Container-Query, die .weather-widget__inner ab 480px in eine
+ * Zeile legt: die Kurve braucht die volle Breite unter dem Jetzt-Block. */
+@container dashboard-widget (min-width: 480px) {
+  .weather-widget--hourly .weather-widget__inner {
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .weather-widget--hourly .weather-widget__main {
+    flex: 0 0 auto;
+  }
+}
+
 /* ── Uhr (#651) ──────────────────────────────────────────────────────────
  * Gebaut für den Fall, der sie erst nötig macht: ein Wandtablet ohne
  * Systemleiste, aus mehreren Metern Abstand gelesen. Die Zeit skaliert

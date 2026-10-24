@@ -75,9 +75,20 @@ import { installPopoverMenus, popoverMenuHtml } from '/utils/popover-menu.js';
 import { nextRewardGoal } from '/utils/reward-goal.js';
 import { reloadAfterSave } from '/utils/reload-after-save.js';
 import { shiftTypeLabel } from '/utils/shift-label.js';
+import {
+  hourlyHorizon,
+  weatherHourlyChartMarkup,
+} from '/utils/weather-hourly-chart.js';
 
 // Hält den AbortController des aktuellen FAB-Listeners - wird bei jedem render() erneuert.
 let _fabController = null;
+
+/** Ob die Stundenkurve auf dem Wetter-Widget der Uebersicht offen ist (Session). */
+let _weatherHourlyExpanded = false;
+/** Letzte Wetter-Payload mit `hourly` - fuer Auf-/Zuklappen ohne Neuabruf. */
+let _weatherHourlyPayload = null;
+/** onUpdated des Wetter-Refresh - ueberlebt Remount beim Aufklappen. */
+let _weatherRefreshOnUpdated = null;
 
 /* DIE WAND HAELT DEN EINEN HISTORY-MARKER (#1559). Zurueck beendete sie nicht:
  * es gab keinen Eintrag und keinen `popstate`-Handler, in der installierten App
@@ -5441,7 +5452,7 @@ function renderDashboardLayout(cfg, data, weather, currency, { editing = false, 
     shopping: () => renderShoppingTile(data),
     // Hier ankommen heisst eingerichtet (`isWidgetModuleEnabled`); fehlt das
     // Wetter trotzdem, sagt die Kachel es, statt zu verschwinden.
-    weather: () => (weather ? renderWeatherWidget(weather) : renderWeatherUnavailable()),
+    weather: (size) => (weather ? renderWeatherWidget(weather, size) : renderWeatherUnavailable()),
     clock: () => renderClockWidget(),
     quicklinks: () => renderQuickLinks(data.quicklinks ?? []),
     // Die Kachelreihe braucht als einziges Widget zu wissen, wer sonst noch
@@ -5930,49 +5941,114 @@ function weatherSpanModel(forecast) {
   };
 }
 
-function renderWeatherWidget(weather) {
+/** Ob eine Stundenliste eine zeichentbare Kurve hergibt (mind. zwei Temps). */
+function weatherHourlyDrawable(points) {
+  if (!Array.isArray(points) || points.length < 2) return false;
+  return points.filter((p) => Number.isFinite(Number(p?.temp))).length >= 2;
+}
+
+function weatherHourlyPoints(weather) {
+  return hourlyHorizon(weather?.hourly, weather?.today?.date);
+}
+
+function weatherHourlyChartOpts(units) {
+  return {
+    units: units === 'imperial' ? 'imperial' : 'metric',
+    tempUnit: units === 'imperial' ? '°F' : '°C',
+    windUnit: units === 'imperial' ? 'mph' : 'km/h',
+    precipUnit: units === 'imperial' ? 'in' : 'mm',
+    locale: getLocale(),
+    labels: {
+      temp: t('dashboard.weatherHourlyTemp'),
+      precip: t('dashboard.weatherHourlyPrecip'),
+      precipMax: t('dashboard.weatherHourlyPrecipMax'),
+      wind: t('dashboard.weatherHourlyWind'),
+      gust: t('dashboard.weatherHourlyGust'),
+    },
+  };
+}
+
+/**
+ * Yr-Stil ~48h-Kurve (Temp+Nedbør / Vind). Nur wenn aufgeklappt und Daten da.
+ */
+function renderWeatherHourlySection(weather) {
+  const points = weatherHourlyPoints(weather);
+  if (!weatherHourlyDrawable(points)) return '';
+  const chart = weatherHourlyChartMarkup(points, weatherHourlyChartOpts(weather.units));
+  if (!chart) return '';
+  return `
+    <div class="weather-hourly" data-weather-hourly>
+      <div class="weather-hourly__chart" data-weather-hourly-chart role="img" aria-label="${esc(t('dashboard.weatherHourlyChart'))}">
+        ${chart}
+      </div>
+    </div>`;
+}
+
+function weatherWidgetSizeOf(wrapper) {
+  return [...(wrapper?.classList ?? [])]
+    .find((c) => c.startsWith('widget-size--'))
+    ?.slice('widget-size--'.length) ?? '1x1';
+}
+
+function renderWeatherWidget(weather, size = '1x1') {
   if (!weather) return '';
 
   const { city, current, forecast, units } = weather;
+  _weatherHourlyPayload = weather;
 
   const unitSymbol = weatherUnitSymbol(units);
   const windUnit   = units === 'imperial' ? 'mph' : 'km/h';
 
   const descText = (desc) => weatherDescText(weather, desc);
-  const iconHtml = (icon, cls, size, desc) => weatherIconHtml(weather, icon, cls, size, desc);
+  const iconHtml = (icon, cls, iconSize, desc) => weatherIconHtml(weather, icon, cls, iconSize, desc);
+
+  const canExpand = weatherHourlyDrawable(weatherHourlyPoints(weather));
+  const expanded = canExpand && _weatherHourlyExpanded;
+  const hourlyHtml = expanded ? renderWeatherHourlySection(weather) : '';
+  const showHourly = Boolean(hourlyHtml);
 
   const spanOf = weatherSpanModel(forecast);
 
-  const forecastHtml = forecast.map((d, i) => {
-    const label = weatherDayLabel(weather, d.date);
-    const extraCls = i >= 3 ? ' weather-forecast__day--extended' : '';
-    // Der Balken trägt das Band der HÖCHSTtemperatur: sie ist die Zahl, nach
-    // der ein Tag eingeschätzt wird ("wird es warm?"), und sie steht daneben.
-    const band = weatherTempBand(d.temp_max, units);
-    const span = spanOf?.(d);
-    const spanHtml = span
-      ? `<div class="weather-forecast__span"${band ? ` data-weather-band="${band}"` : ''}
-              style="--span-from:${span.from.toFixed(4)};--span-to:${span.to.toFixed(4)}" aria-hidden="true"></div>`
-      : '';
-    return `
-      <div class="weather-forecast__day${extraCls}">
-        <div class="weather-forecast__label${weatherIsToday(weather, d.date) ? ' weather-forecast__label--today' : ''}">${esc(label)}</div>
-        ${iconHtml(d.icon, 'weather-forecast__icon', 32, descText(d.desc))}
-        <div class="weather-forecast__temps">
-          <span class="weather-forecast__high">${d.temp_max}°</span>
-          <span class="weather-forecast__low">${d.temp_min}°</span>
-        </div>
-        ${spanHtml}
-      </div>`;
-  }).join('');
+  const forecastHtml = (!showHourly && forecast?.length)
+    ? forecast.map((d, i) => {
+      const label = weatherDayLabel(weather, d.date);
+      const extraCls = i >= 3 ? ' weather-forecast__day--extended' : '';
+      // Der Balken trägt das Band der HÖCHSTtemperatur: sie ist die Zahl, nach
+      // der ein Tag eingeschätzt wird ("wird es warm?"), und sie steht daneben.
+      const band = weatherTempBand(d.temp_max, units);
+      const span = spanOf?.(d);
+      const spanHtml = span
+        ? `<div class="weather-forecast__span"${band ? ` data-weather-band="${band}"` : ''}
+                style="--span-from:${span.from.toFixed(4)};--span-to:${span.to.toFixed(4)}" aria-hidden="true"></div>`
+        : '';
+      return `
+        <div class="weather-forecast__day${extraCls}">
+          <div class="weather-forecast__label${weatherIsToday(weather, d.date) ? ' weather-forecast__label--today' : ''}">${esc(label)}</div>
+          ${iconHtml(d.icon, 'weather-forecast__icon', 32, descText(d.desc))}
+          <div class="weather-forecast__temps">
+            <span class="weather-forecast__high">${d.temp_max}°</span>
+            <span class="weather-forecast__low">${d.temp_min}°</span>
+          </div>
+          ${spanHtml}
+        </div>`;
+    }).join('')
+    : '';
+
+  const expandCls = canExpand ? ' weather-widget--expandable' : '';
+  const hourlyCls = showHourly ? ' weather-widget--hourly' : '';
+  // Hit-Target ist __inner (nicht die Karte): Refresh und Kopf bleiben eigene
+  // Bedienelemente, ohne role=button in role=button zu nesten.
+  const expandAttrs = canExpand
+    ? ` data-weather-expand tabindex="0" role="button" aria-expanded="${expanded ? 'true' : 'false'}" aria-label="${esc(expanded ? t('dashboard.weatherHourlyHide') : t('dashboard.weatherHourlyShow'))}"`
+    : '';
 
   return `
-    <div class="widget widget--weather weather-widget" id="weather-widget"${weatherToneAttr(current.icon)}${weatherMotionAttr(current.icon)}>
+    <div class="widget widget--weather weather-widget${expandCls}${hourlyCls}" id="weather-widget"${weatherToneAttr(current.icon)}${weatherMotionAttr(current.icon)}>
       ${widgetHeader('weather', t('dashboard.weather'), null, null, null, 'dashboard')}
       <button class="weather-widget__refresh" id="weather-refresh-btn" aria-label="${t('dashboard.weatherRefresh')}" title="${t('dashboard.weatherRefreshTitle')}">
         <i data-lucide="refresh-cw" class="icon-md" aria-hidden="true"></i>
       </button>
-      <div class="weather-widget__inner">
+      <div class="weather-widget__inner"${expandAttrs}>
         <div class="weather-widget__main">
           <div class="weather-widget__left">
             <div class="weather-widget__temp">${esc(current.temp)}${unitSymbol}</div>
@@ -5985,7 +6061,7 @@ function renderWeatherWidget(weather) {
           </div>
           <span class="weather-widget__glyph">${iconHtml(current.icon, 'weather-widget__icon', 80, descText(current.desc))}</span>
         </div>
-        ${forecast.length ? `<div class="weather-forecast">${forecastHtml}</div>` : ''}
+        ${hourlyHtml || (forecastHtml ? `<div class="weather-forecast">${forecastHtml}</div>` : '')}
       </div>
     </div>`;
 }
@@ -8356,6 +8432,7 @@ export async function render(container, { user, signal: routeSignal = null } = {
       weather = updatedWeather;
       rebuildDashboard(cfg);
     }, signal);
+    wireWeatherExpand(container, signal);
     container.querySelector('#dashboard-search')?.addEventListener('click', () => {
       window.yuvomi?.openSearch?.();
     }, { signal: signal });
@@ -8706,7 +8783,49 @@ export const __test = {
 // ein ueberholter Aufbau haengte seinen Klick damit an den Controller des
 // neueren, und der Rauchtest im Browser fand den Zugriff als ReferenceError,
 // nachdem das Feld aus render() verschwunden war. Der Aufrufer reicht es herein.
+/**
+ * Klick auf die Wetterkarte klappt die ~48h-Kurve auf/zu. Interaktive Kinder
+ * (Aktualisieren, Anpassen-Kontrollen, Links) bleiben ausgenommen.
+ */
+function remountWeatherWidget(container, weather, signal, onUpdated = _weatherRefreshOnUpdated) {
+  const wWidget = container.querySelector('#weather-widget');
+  if (!wWidget || !weather) return;
+  const wrapper = wWidget.closest('.widget-wrapper');
+  if (!wrapper) return;
+  const size = weatherWidgetSizeOf(wrapper);
+  wrapper.querySelector('.widget')?.remove();
+  wrapper.insertAdjacentHTML('beforeend', renderWeatherWidget(weather, size));
+  const newWidget = container.querySelector('#weather-widget');
+  if (newWidget && window.lucide) window.lucide.createIcons({ el: newWidget });
+  wireWeatherRefresh(container, onUpdated, signal);
+  wireWeatherExpand(container, signal);
+}
+
+function wireWeatherExpand(container, signal) {
+  const hit = container.querySelector('#weather-widget [data-weather-expand]');
+  if (!hit) return;
+
+  const toggle = () => {
+    if (!_weatherHourlyPayload) return;
+    _weatherHourlyExpanded = !_weatherHourlyExpanded;
+    remountWeatherWidget(container, _weatherHourlyPayload, signal);
+  };
+
+  hit.addEventListener('click', (e) => {
+    if (e.target.closest('a, button')) return;
+    toggle();
+  }, { signal });
+
+  hit.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    if (e.target !== hit) return;
+    e.preventDefault();
+    toggle();
+  }, { signal });
+}
+
 function wireWeatherRefresh(container, onUpdated = null, signal) {
+  if (typeof onUpdated === 'function') _weatherRefreshOnUpdated = onUpdated;
   const refreshBtn = container.querySelector('#weather-refresh-btn');
   if (!refreshBtn) return;
   const doWeatherRefresh = async () => {
@@ -8721,15 +8840,8 @@ function wireWeatherRefresh(container, onUpdated = null, signal) {
         window.yuvomi?.showToast(t('common.errorGeneric'), 'danger');
         return;
       }
-      const wWidget = container.querySelector('#weather-widget');
-      if (wWidget) {
-        const wrapper = wWidget.closest('.widget-wrapper');
-        if (wrapper) {
-          wrapper.querySelector('.widget')?.remove();
-          wrapper.insertAdjacentHTML('beforeend', renderWeatherWidget(res.data));
-        }
-        const newWidget = container.querySelector('#weather-widget');
-        if (newWidget && window.lucide) window.lucide.createIcons({ el: newWidget });
+      if (container.querySelector('#weather-widget')) {
+        remountWeatherWidget(container, res.data, signal, onUpdated);
         onUpdated?.(res.data);
         window.yuvomi?.showToast(t('dashboard.weatherUpdated'), 'success', 1500);
       }

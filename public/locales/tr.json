@@ -423,6 +423,14 @@
         "nutritionEntries": "Bugün {{count}} kayıt",
         "nutritionEntries_one": "Bugün {{count}} kayıt",
         "weatherUnavailable": "Hava durumu şu anda kullanılamıyor",
+        "weatherHourlyChart": "Saatlik sıcaklık, yağış ve rüzgar",
+        "weatherHourlyShow": "Saatlik tahmini göster",
+        "weatherHourlyHide": "Saatlik tahmini gizle",
+        "weatherHourlyTemp": "Sıcaklık",
+        "weatherHourlyPrecip": "Yağış",
+        "weatherHourlyPrecipMax": "Maks. yağış",
+        "weatherHourlyWind": "Rüzgar",
+        "weatherHourlyGust": "Sert rüzgar",
         "wallScreensaverNone": "Ekran koruyucu kullanılamıyor.",
         "wallScreensaverStart": "Ekran koruyucu"
     },
@@ -3359,7 +3367,7 @@
         "permIntroMore": "Bireysel üyeler rol varsayılanından farklı olabilir. Ayar yapılmazsa her rol tam erişime sahiptir; yöneticiler her zaman.",
         "weatherProviderMetNorway": "MET Norway (api.met.no)",
         "weatherProviderLabel": "Weather data source",
-        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast) — good for Norway, works worldwide, no API key."
+        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast), good for Norway, works worldwide, no API key."
     },
     "login": {
         "tagline": "Tekrar hoş geldin. Evin tek bir yerde.",

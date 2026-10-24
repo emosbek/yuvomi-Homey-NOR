@@ -173,6 +173,14 @@ export function buildMetNorwayWeather(body, opts = {}) {
   const city = opts.city
     || (opts.lat != null && opts.lon != null ? `${opts.lat}, ${opts.lon}` : 'MET Norway');
 
+  const tomorrowKey = shiftDateKey(todayKey, 1);
+  const hourly = buildMetHourly(series, {
+    units,
+    dateKeyFn,
+    hourFn: opts.hourFn,
+    keepDates: new Set([todayKey, tomorrowKey].filter(Boolean)),
+  });
+
   return {
     provider: 'met-norway',
     city,
@@ -190,7 +198,71 @@ export function buildMetNorwayWeather(body, opts = {}) {
     },
     today: days.find((d) => d.date === todayKey) ?? days[0] ?? null,
     forecast: days.filter((d) => d.date > todayKey).slice(0, 5),
+    hourly,
   };
+}
+
+function shiftDateKey(dateKey, days) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateKey ?? ''));
+  if (!m) return null;
+  const ms = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) + days * 86400000;
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+function precipToDisplay(mm, units) {
+  const v = Number(mm);
+  if (!Number.isFinite(v) || v <= 0) return 0;
+  if (units === 'imperial') return Math.round((v / 25.4) * 100) / 100;
+  return Math.round(v * 10) / 10;
+}
+
+function wallHourFromIso(iso, dateKeyFn) {
+  // MET times are UTC ISO (`…Z`). Stunde am Ort: aus dem lokalen Datumsschluessel
+  // und dem Offset zwischen UTC- und Ortstag nicht rekonstruierbar ohne Zone.
+  // Aufrufer kann `hourFn` liefern; sonst UTC-Stunde (Tests / Fallback).
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return 0;
+  return d.getUTCHours();
+}
+
+/**
+ * Stundenpunkte nur dort, wo MET `next_1_hours` liefert (echte Stunden-
+ * Aufloesung). Spaetere 6h-Schritte entfallen. `keepDates` begrenzt auf heute
+ * und morgen am Wetterort.
+ */
+export function buildMetHourly(series, { units = 'metric', dateKeyFn, hourFn, keepDates } = {}) {
+  const keyFn = typeof dateKeyFn === 'function' ? dateKeyFn : (iso) => String(iso).slice(0, 10);
+  const hourOf = typeof hourFn === 'function' ? hourFn : wallHourFromIso;
+  const allow = keepDates instanceof Set ? keepDates : null;
+  const out = [];
+  for (const entry of series) {
+    const n1 = entry?.data?.next_1_hours;
+    if (!n1) continue;
+    const date = keyFn(entry.time);
+    if (!date || (allow && !allow.has(date))) continue;
+    const details = entry.data?.instant?.details ?? {};
+    const precipMm = Number(n1.details?.precipitation_amount) || 0;
+    // Compact liefert oft kein Max; complete hat precipitation_amount_max.
+    const precipMaxRaw = n1.details?.precipitation_amount_max;
+    const precipMaxMm = Number.isFinite(Number(precipMaxRaw)) ? Number(precipMaxRaw) : null;
+    const symbol = n1.summary?.symbol_code ?? '';
+    const snow = /snow|sleet/i.test(symbol);
+    const windDirRaw = Number(details.wind_from_direction);
+    const gustRaw = details.wind_speed_of_gust;
+    out.push({
+      date,
+      hour: hourOf(entry.time, date),
+      temp: celsiusToDisplay(details.air_temperature, units),
+      wind: windToDisplay(details.wind_speed, units),
+      gust: Number.isFinite(Number(gustRaw)) ? windToDisplay(gustRaw, units) : null,
+      windDir: Number.isFinite(windDirRaw) ? Math.round(windDirRaw) : null,
+      precip: precipToDisplay(precipMm, units),
+      precipMax: precipMaxMm != null ? precipToDisplay(precipMaxMm, units) : null,
+      snow,
+      icon: metSymbolIcon(symbol, isDaySymbol(symbol)),
+    });
+  }
+  return out;
 }
 
 export const MET_NORWAY_FORECAST_URL = 'https://api.met.no/weatherapi/locationforecast/2.0/compact';
