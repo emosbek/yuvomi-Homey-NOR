@@ -994,6 +994,13 @@ test('the overview widget loads pinned buttons and can activate them', () => {
   assert.match(widget, /ensureStyle\(STYLE\)/);
 });
 
+test('the Homey page still imports deviceIcon for the Add from Homey catalog', () => {
+  const page = readFileSync(path.join(root, 'modules/homey/index.js'), 'utf8');
+  assert.match(page, /\bdeviceIcon\b/);
+  assert.match(page, /deviceIcon,/);
+  assert.equal(page.includes('function deviceIcon'), false);
+});
+
 test('Yuvomi accepts the Homey manifest', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'homey-manifest-'));
   const dbPath = path.join(dir, 'manifest.db');

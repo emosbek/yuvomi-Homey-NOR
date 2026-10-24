@@ -6,6 +6,7 @@ import { showToast } from '/utils/toast-show.js';
 import { startDoorbellWatch } from './alert.js';
 import {
   button,
+  deviceIcon,
   heading,
   homeyApi,
   mountConnectionForm,
