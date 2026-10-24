@@ -2672,8 +2672,8 @@
         "weatherUnitsImperial": "ヤード・ポンド法 (°F, mph)",
         "weatherSave": "保存",
         "weatherSaved": "天気ウィジェットを保存しました。",
-        "weatherRemove": "Open-Meteoを無効にする",
-        "weatherRemoved": "Open-Meteoを無効にしました。",
+        "weatherRemove": "Disable saved weather",
+        "weatherRemoved": "Saved weather location disabled.",
         "weatherRemovedEnv": "保存した場所を削除しました。サーバー設定の場所が再び適用されます。",
         "weatherActiveProvider": "現在のプロバイダー",
         "weatherProviderOpenMeteo": "Open-Meteo",
@@ -2682,7 +2682,7 @@
         "weatherProviderNone": "未設定",
         "weatherEnvLocationLabel": "場所",
         "weatherEnvHint": "これらの値はサーバー設定（.env）から読み込まれています。ここで保存した場所が優先されます。無効にするには、.env ファイルから {{vars}} の項目を削除し、コンテナを再起動してください。",
-        "weatherSwitchHint": "保存するとOpen-Meteoが有効化され、OWMは無視されます。",
+        "weatherSwitchHint": "Saving activates the chosen source and ignores OpenWeatherMap from .env.",
         "householdWeatherOverrideHint": "メンバーは「自分の天気」で独自の場所を設定でき、その場所がこちらより優先されます。",
         "weatherLocateBtn": "現在地を取得",
         "weatherLocateSuccess": "現在地を取得しました。",
@@ -3356,7 +3356,10 @@
         "permCapabilityTasksReorder": "家族の並び順を変更",
         "permChildRoleHint": "新しい子どものアカウントには、作成時に独自の初期権限も付きます: {{list}}。その後は各メンバーに表示されます。",
         "activeModulesHintMore": "自分の画面だけで隠す場合は「モジュール → ナビゲーション」へ。",
-        "permIntroMore": "個々のメンバーは役割の既定値と異なる設定にできます。未設定の場合、すべての役割がフルアクセスを持ち、管理者は常にフルアクセスです。"
+        "permIntroMore": "個々のメンバーは役割の既定値と異なる設定にできます。未設定の場合、すべての役割がフルアクセスを持ち、管理者は常にフルアクセスです。",
+        "weatherProviderMetNorway": "MET Norway (api.met.no)",
+        "weatherProviderLabel": "Weather data source",
+        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast) — good for Norway, works worldwide, no API key."
     },
     "login": {
         "tagline": "おかえりなさい。暮らしのことを一か所に。",

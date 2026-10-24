@@ -5685,20 +5685,25 @@ function renderShoppingLists(lists, openTotal = null, listTotalCount = null) {
 
 const WEATHER_ICON_BASE = '/api/v1/weather/icon/';
 
-// Geteilte Wetter-Bausteine für Karte UND Masthead-Zeile: Open-Meteo liefert
-// Lucide-Icon-Namen + wmo.*-i18n-Keys; OWM (Legacy) liefert OWM-Icon-Codes
-// (via /icon-Proxy) + bereits lokalisierten Beschreibungstext. OWM-Legacy kann
-// zudem 'standard' (Kelvin) liefern; Open-Meteo nur metric/imperial.
+// Geteilte Wetter-Bausteine für Karte UND Masthead-Zeile: Open-Meteo und
+// MET Norway liefern Lucide-Icon-Namen + wmo.*-i18n-Keys; OWM (Legacy) liefert
+// OWM-Icon-Codes (via /icon-Proxy) + bereits lokalisierten Beschreibungstext.
+// OWM-Legacy kann zudem 'standard' (Kelvin) liefern; die beiden Koordinaten-
+// Anbieter nur metric/imperial.
+function weatherUsesLucide(weather) {
+  return weather?.provider === 'open-meteo' || weather?.provider === 'met-norway';
+}
+
 function weatherUnitSymbol(units) {
   return units === 'imperial' ? '°F' : units === 'standard' ? 'K' : '°C';
 }
 
 function weatherDescText(weather, desc) {
-  return weather?.provider === 'open-meteo' ? t(desc) : desc;
+  return weatherUsesLucide(weather) ? t(desc) : desc;
 }
 
 function weatherIconHtml(weather, icon, cls, size, desc) {
-  if (weather?.provider === 'open-meteo') {
+  if (weatherUsesLucide(weather)) {
     return `<i data-lucide="${esc(icon)}" class="${cls}" aria-hidden="true"></i>`;
   }
   return `<img class="${cls}" src="${WEATHER_ICON_BASE}${esc(icon)}"

@@ -2958,8 +2958,8 @@
         "weatherUnitsImperial": "إمبراطوري (°F، ميل/ساعة)",
         "weatherSave": "حفظ",
         "weatherSaved": "تم حفظ أداة الطقس.",
-        "weatherRemove": "تعطيل Open-Meteo",
-        "weatherRemoved": "تم تعطيل Open-Meteo.",
+        "weatherRemove": "Disable saved weather",
+        "weatherRemoved": "Saved weather location disabled.",
         "weatherRemovedEnv": "تمت إزالة الموقع المحفوظ. يُطبَّق الموقع من إعدادات الخادم مجددًا.",
         "weatherActiveProvider": "المزود النشط",
         "weatherProviderOpenMeteo": "Open-Meteo",
@@ -2968,7 +2968,7 @@
         "weatherProviderNone": "غير مُهيأ",
         "weatherEnvLocationLabel": "الموقع",
         "weatherEnvHint": "تأتي هذه القيم من إعدادات الخادم (.env). الموقع المحفوظ هنا له الأولوية. لإيقافها، احذف إدخالات {{vars}} من ملف .env وأعد تشغيل الحاوية.",
-        "weatherSwitchHint": "سيتم تفعيل Open-Meteo عند الحفظ وسيتم تجاهل OWM.",
+        "weatherSwitchHint": "Saving activates the chosen source and ignores OpenWeatherMap from .env.",
         "householdWeatherOverrideHint": "يمكن لكل عضو تعيين موقعه الخاص ضمن «طقسي»، وهو يحل محل هذا الموقع.",
         "weatherLocateBtn": "تحديد الموقع",
         "weatherLocateSuccess": "تم تحديد الموقع بنجاح.",
@@ -3672,7 +3672,10 @@
         "permCapabilityTasksReorder": "تغيير ترتيب العائلة",
         "permChildRoleHint": "تحصل حسابات الأطفال الجديدة عند إنشائها أيضًا على أذونات بدء خاصة: {{list}}. بعد ذلك تظهر لدى العضو نفسه.",
         "activeModulesHintMore": "لإخفاء وحدة من تنقلك أنت فقط، اذهب إلى الوحدات ← التنقل.",
-        "permIntroMore": "يمكن أن يختلف الأعضاء الأفراد عن الإعداد الافتراضي للدور. بدون أي إعداد، يتمتع كل دور بوصول كامل؛ والمشرفون دائمًا."
+        "permIntroMore": "يمكن أن يختلف الأعضاء الأفراد عن الإعداد الافتراضي للدور. بدون أي إعداد، يتمتع كل دور بوصول كامل؛ والمشرفون دائمًا.",
+        "weatherProviderMetNorway": "MET Norway (api.met.no)",
+        "weatherProviderLabel": "Weather data source",
+        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast) — good for Norway, works worldwide, no API key."
     },
     "login": {
         "tagline": "مرحبًا بعودتك. منزلك في مكان واحد.",

@@ -2690,8 +2690,8 @@
         "weatherUnitsImperial": "امپریال (°F، mph)",
         "weatherSave": "ذخیره",
         "weatherSaved": "ابزارک آب‌وهوا ذخیره شد.",
-        "weatherRemove": "غیرفعال‌سازی Open-Meteo",
-        "weatherRemoved": "Open-Meteo غیرفعال شد.",
+        "weatherRemove": "Disable saved weather",
+        "weatherRemoved": "Saved weather location disabled.",
         "weatherRemovedEnv": "مکان ذخیره‌شده حذف شد. دوباره مکان پیکربندی سرور اعمال می‌شود.",
         "weatherActiveProvider": "ارائه‌دهنده فعال",
         "weatherProviderOpenMeteo": "Open-Meteo",
@@ -2700,7 +2700,7 @@
         "weatherProviderNone": "پیکربندی نشده",
         "weatherEnvLocationLabel": "مکان",
         "weatherEnvHint": "این مقادیر از پیکربندی سرور (.env) می‌آیند. مکانی که اینجا ذخیره شود اولویت دارد. برای غیرفعال کردن، ورودی‌های {{vars}} را از فایل .env حذف کنید و کانتینر را دوباره راه‌اندازی کنید.",
-        "weatherSwitchHint": "هنگام ذخیره، Open-Meteo به‌طور خودکار فعال و OWM نادیده گرفته می‌شود.",
+        "weatherSwitchHint": "Saving activates the chosen source and ignores OpenWeatherMap from .env.",
         "householdWeatherOverrideHint": "هر عضو می‌تواند در «آب‌وهوای من» مکان خود را تعیین کند که جایگزین این مکان می‌شود.",
         "weatherLocateBtn": "تعیین مکان",
         "weatherLocateSuccess": "مکان با موفقیت تعیین شد.",
@@ -3374,7 +3374,10 @@
         "permCapabilityTasksReorder": "تغییر ترتیب خانواده",
         "permChildRoleHint": "حساب‌های جدید کودک هنگام ساخت، دسترسی‌های آغازین خودشان را هم می‌گیرند: {{list}}. پس از آن نزد همان عضو نمایش داده می‌شوند.",
         "activeModulesHintMore": "برای پنهان کردن فقط برای خودت به ماژول‌ها ← ناوبری برو.",
-        "permIntroMore": "هر عضو می‌تواند با پیش‌فرض نقش متفاوت باشد. بدون تنظیم، هر نقش دسترسی کامل دارد؛ مدیران همیشه."
+        "permIntroMore": "هر عضو می‌تواند با پیش‌فرض نقش متفاوت باشد. بدون تنظیم، هر نقش دسترسی کامل دارد؛ مدیران همیشه.",
+        "weatherProviderMetNorway": "MET Norway (api.met.no)",
+        "weatherProviderLabel": "Weather data source",
+        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast) — good for Norway, works worldwide, no API key."
     },
     "login": {
         "tagline": "دوباره خوش آمدید. خانهٔ شما در یک جا.",

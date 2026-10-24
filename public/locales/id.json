@@ -2690,8 +2690,8 @@
         "weatherUnitsImperial": "Imperial (°F, mph)",
         "weatherSave": "Simpan",
         "weatherSaved": "Widget cuaca disimpan.",
-        "weatherRemove": "Nonaktifkan Open-Meteo",
-        "weatherRemoved": "Open-Meteo dinonaktifkan.",
+        "weatherRemove": "Disable saved weather",
+        "weatherRemoved": "Saved weather location disabled.",
         "weatherRemovedEnv": "Lokasi tersimpan dihapus. Lokasi dari konfigurasi server berlaku kembali.",
         "weatherActiveProvider": "Penyedia aktif",
         "weatherProviderOpenMeteo": "Open-Meteo",
@@ -2700,7 +2700,7 @@
         "weatherProviderNone": "Belum dikonfigurasi",
         "weatherEnvLocationLabel": "Lokasi",
         "weatherEnvHint": "Nilai ini berasal dari konfigurasi server (.env). Lokasi yang disimpan di sini lebih diutamakan. Untuk menonaktifkannya, hapus entri {{vars}} dari file .env lalu mulai ulang kontainer.",
-        "weatherSwitchHint": "Open-Meteo otomatis diaktifkan saat menyimpan dan OWM diabaikan.",
+        "weatherSwitchHint": "Saving activates the chosen source and ignores OpenWeatherMap from .env.",
         "householdWeatherOverrideHint": "Anggota dapat menetapkan lokasi sendiri di “Cuaca saya”, yang menggantikan lokasi ini.",
         "weatherLocateBtn": "Deteksi lokasi",
         "weatherLocateSuccess": "Lokasi berhasil dideteksi.",
@@ -3374,7 +3374,10 @@
         "permCapabilityTasksReorder": "Ubah urutan keluarga",
         "permChildRoleHint": "Akun anak baru juga mendapat izin awal sendiri saat dibuat: {{list}}. Setelah itu, izin tersebut tercantum pada anggota itu.",
         "activeModulesHintMore": "Untuk menyembunyikan hanya bagi dirimu, buka Modul → Navigasi.",
-        "permIntroMore": "Anggota individu dapat berbeda dari default peran. Tanpa pengaturan, setiap peran memiliki akses penuh; administrator selalu."
+        "permIntroMore": "Anggota individu dapat berbeda dari default peran. Tanpa pengaturan, setiap peran memiliki akses penuh; administrator selalu.",
+        "weatherProviderMetNorway": "MET Norway (api.met.no)",
+        "weatherProviderLabel": "Weather data source",
+        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast) — good for Norway, works worldwide, no API key."
     },
     "login": {
         "tagline": "Selamat datang kembali. Rumah Anda dalam satu tempat.",

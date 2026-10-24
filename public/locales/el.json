@@ -2672,8 +2672,8 @@
         "weatherUnitsImperial": "Αγγλοσαξονικό (°F, mph)",
         "weatherSave": "Αποθήκευση",
         "weatherSaved": "Widget καιρού αποθηκεύτηκε.",
-        "weatherRemove": "Απενεργοποίηση Open-Meteo",
-        "weatherRemoved": "Το Open-Meteo απενεργοποιήθηκε.",
+        "weatherRemove": "Disable saved weather",
+        "weatherRemoved": "Saved weather location disabled.",
         "weatherRemovedEnv": "Η αποθηκευμένη τοποθεσία αφαιρέθηκε. Ισχύει ξανά η τοποθεσία από τη ρύθμιση του διακομιστή.",
         "weatherActiveProvider": "Ενεργός πάροχος",
         "weatherProviderOpenMeteo": "Open-Meteo",
@@ -2682,7 +2682,7 @@
         "weatherProviderNone": "Δεν έχει ρυθμιστεί",
         "weatherEnvLocationLabel": "Τοποθεσία",
         "weatherEnvHint": "Αυτές οι τιμές προέρχονται από τη ρύθμιση του διακομιστή (.env). Μια τοποθεσία που αποθηκεύεται εδώ έχει προτεραιότητα. Για απενεργοποίηση, αφαιρέστε τις καταχωρίσεις {{vars}} από το αρχείο .env και επανεκκινήστε το container.",
-        "weatherSwitchHint": "Το Open-Meteo θα ενεργοποιηθεί κατά την αποθήκευση και το OWM θα αγνοηθεί.",
+        "weatherSwitchHint": "Saving activates the chosen source and ignores OpenWeatherMap from .env.",
         "householdWeatherOverrideHint": "Τα μέλη μπορούν να ορίσουν δική τους τοποθεσία στο «Ο καιρός μου», που αντικαθιστά αυτήν.",
         "weatherLocateBtn": "Εντοπισμός τοποθεσίας",
         "weatherLocateSuccess": "Τοποθεσία εντοπίστηκε.",
@@ -3356,7 +3356,10 @@
         "permCapabilityTasksReorder": "Αλλαγή της σειράς της οικογένειας",
         "permChildRoleHint": "Οι νέοι λογαριασμοί παιδιών παίρνουν κατά τη δημιουργία και δικά τους αρχικά δικαιώματα: {{list}}. Μετά εμφανίζονται στο αντίστοιχο μέλος.",
         "activeModulesHintMore": "Για απόκρυψη μόνο για εσένα, πήγαινε στο Μονάδες → Πλοήγηση.",
-        "permIntroMore": "Τα μεμονωμένα μέλη μπορούν να διαφέρουν από την προεπιλογή του ρόλου. Χωρίς ρύθμιση, κάθε ρόλος έχει πλήρη πρόσβαση· οι διαχειριστές πάντα."
+        "permIntroMore": "Τα μεμονωμένα μέλη μπορούν να διαφέρουν από την προεπιλογή του ρόλου. Χωρίς ρύθμιση, κάθε ρόλος έχει πλήρη πρόσβαση· οι διαχειριστές πάντα.",
+        "weatherProviderMetNorway": "MET Norway (api.met.no)",
+        "weatherProviderLabel": "Weather data source",
+        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast) — good for Norway, works worldwide, no API key."
     },
     "login": {
         "tagline": "Καλώς ήρθατε ξανά. Το σπίτι σας σε ένα μέρος.",

@@ -210,6 +210,76 @@ test('DB provider=open-meteo overrides env OPENWEATHER_API_KEY; night → moon',
   } finally { await close(); }
 });
 
+const MET_FETCH = async (url, opts) => {
+  const u = new URL(String(url));
+  assert.equal(u.hostname, 'api.met.no');
+  assert.match(u.pathname, /locationforecast\/2\.0\/compact/);
+  assert.equal(opts?.headers?.['User-Agent']?.startsWith('Yuvomi/'), true,
+    'MET verlangt einen identifizierbaren User-Agent');
+  // Vier Nachkommastellen: 59.912345 → 59.9123
+  assert.equal(u.searchParams.get('lat'), '59.9123');
+  assert.equal(u.searchParams.get('lon'), '10.7522');
+  return {
+    ok: true,
+    json: async () => ({
+      properties: {
+        meta: { updated_at: '2026-10-24T12:00:00Z' },
+        timeseries: [
+          {
+            time: '2026-10-24T12:00:00Z',
+            data: {
+              instant: { details: { air_temperature: 11.2, relative_humidity: 70, wind_speed: 2.5 } },
+              next_1_hours: { summary: { symbol_code: 'partlycloudy_day' } },
+            },
+          },
+          {
+            time: '2026-10-25T12:00:00Z',
+            data: {
+              instant: { details: { air_temperature: 9.0, relative_humidity: 80, wind_speed: 3 } },
+              next_6_hours: { summary: { symbol_code: 'rain' } },
+            },
+          },
+        ],
+      },
+    }),
+  };
+};
+
+test('MET Norway via DB: User-Agent, gerundete Koordinaten, Lucide + wmo desc', async () => {
+  const { baseUrl, close } = await startApp({
+    db: {
+      weather_provider: 'met-norway',
+      weather_lat: '59.912345',
+      weather_lon: '10.75222',
+      weather_city: 'Oslo',
+    },
+    fetchFn: MET_FETCH,
+  });
+  try {
+    const { body } = await getJson(baseUrl);
+    assert.equal(body.data.provider, 'met-norway');
+    assert.equal(body.data.city, 'Oslo');
+    assert.equal(body.data.current.icon, 'cloud-sun');
+    assert.equal(body.data.current.desc, 'wmo.2');
+    assert.equal(body.data.forecast[0].icon, 'cloud-rain');
+  } finally { await close(); }
+});
+
+test('MET Norway HTTP 403 → upstream_error, Log nennt MET Norway', async () => {
+  const logger = spyLogger();
+  const { baseUrl, close } = await startApp({
+    db: { weather_provider: 'met-norway', weather_lat: '59.91', weather_lon: '10.75' },
+    logger,
+    fetchFn: async () => ({ ok: false, status: 403, json: async () => ({}) }),
+  });
+  try {
+    const { body } = await getJson(baseUrl);
+    assert.deepEqual(body, { data: null, reason: 'upstream_error' });
+    assert.match(logger.lines.find((l) => l.level === 'warn').msg, /MET Norway/);
+    assert.match(logger.lines.find((l) => l.level === 'warn').msg, /403/);
+  } finally { await close(); }
+});
+
 test('OWM legacy via env: provider + raw OWM icon code', async () => {
   const { baseUrl, close } = await startApp({
     env: { OPENWEATHER_API_KEY: 'key123', OPENWEATHER_CITY: 'Hamburg' },

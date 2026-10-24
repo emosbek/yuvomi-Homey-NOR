@@ -2768,8 +2768,8 @@
         "weatherUnitsImperial": "Imperiální (°F, mph)",
         "weatherSave": "Uložit",
         "weatherSaved": "Widget počasí uložen.",
-        "weatherRemove": "Zakázat Open-Meteo",
-        "weatherRemoved": "Open-Meteo zakázán.",
+        "weatherRemove": "Disable saved weather",
+        "weatherRemoved": "Saved weather location disabled.",
         "weatherRemovedEnv": "Uložená poloha byla odstraněna. Znovu platí poloha z konfigurace serveru.",
         "weatherActiveProvider": "Aktivní poskytovatel",
         "weatherProviderOpenMeteo": "Open-Meteo",
@@ -2778,7 +2778,7 @@
         "weatherProviderNone": "Není nakonfigurováno",
         "weatherEnvLocationLabel": "Poloha",
         "weatherEnvHint": "Tyto hodnoty pocházejí z konfigurace serveru (.env). Poloha uložená zde má přednost. Pro vypnutí odstraňte položky {{vars}} ze souboru .env a restartujte kontejner.",
-        "weatherSwitchHint": "Open-Meteo bude aktivován při uložení a OWM bude ignorován.",
+        "weatherSwitchHint": "Saving activates the chosen source and ignores OpenWeatherMap from .env.",
         "householdWeatherOverrideHint": "Členové si mohou v „Moje počasí“ nastavit vlastní místo, které toto nahradí.",
         "weatherLocateBtn": "Zjistit polohu",
         "weatherLocateSuccess": "Poloha úspěšně zjištěna.",
@@ -3462,7 +3462,10 @@
         "permCapabilityTasksReorder": "Měnit pořadí rodiny",
         "permChildRoleHint": "Nové dětské účty dostanou při vytvoření navíc vlastní počáteční oprávnění: {{list}}. Potom jsou uvedena u daného člena.",
         "activeModulesHintMore": "Skrýt modul jen u sebe můžeš v Moduly → Navigace.",
-        "permIntroMore": "Jednotliví členové se mohou od výchozího nastavení role lišit. Bez nastavení má každá role plný přístup; správci vždy."
+        "permIntroMore": "Jednotliví členové se mohou od výchozího nastavení role lišit. Bez nastavení má každá role plný přístup; správci vždy.",
+        "weatherProviderMetNorway": "MET Norway (api.met.no)",
+        "weatherProviderLabel": "Weather data source",
+        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast) — good for Norway, works worldwide, no API key."
     },
     "login": {
         "tagline": "Vítejte zpět. Váš domov na jednom místě.",

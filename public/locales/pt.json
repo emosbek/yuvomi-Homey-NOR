@@ -2672,8 +2672,8 @@
         "weatherUnitsImperial": "Imperial (°F, mph)",
         "weatherSave": "Guardar",
         "weatherSaved": "Widget de tempo guardado.",
-        "weatherRemove": "Desativar Open-Meteo",
-        "weatherRemoved": "Open-Meteo desativado.",
+        "weatherRemove": "Disable saved weather",
+        "weatherRemoved": "Saved weather location disabled.",
         "weatherRemovedEnv": "Localização salva removida. A localização da configuração do servidor volta a valer.",
         "weatherActiveProvider": "Fornecedor ativo",
         "weatherProviderOpenMeteo": "Open-Meteo",
@@ -2682,7 +2682,7 @@
         "weatherProviderNone": "Não configurado",
         "weatherEnvLocationLabel": "Localização",
         "weatherEnvHint": "Estes valores vêm da configuração do servidor (.env). Uma localização guardada aqui tem prioridade. Para desativar, remova as entradas {{vars}} do arquivo .env e reinicie o contêiner.",
-        "weatherSwitchHint": "Open-Meteo será ativado ao guardar e OWM ignorado.",
+        "weatherSwitchHint": "Saving activates the chosen source and ignores OpenWeatherMap from .env.",
         "householdWeatherOverrideHint": "Cada membro pode definir o próprio local em “Meu tempo”, que substitui este.",
         "weatherLocateBtn": "Detectar localização",
         "weatherLocateSuccess": "Localização detectada.",
@@ -3356,7 +3356,10 @@
         "permCapabilityTasksReorder": "Alterar a ordem da família",
         "permChildRoleHint": "As novas contas de criança recebem também, ao serem criadas, permissões iniciais próprias: {{list}}. Depois aparecem no respetivo membro.",
         "activeModulesHintMore": "Para ocultar um módulo só para você, vá em Módulos → Navegação.",
-        "permIntroMore": "Cada membro pode divergir do padrão da função. Sem configuração, cada função tem acesso completo; os administradores sempre."
+        "permIntroMore": "Cada membro pode divergir do padrão da função. Sem configuração, cada função tem acesso completo; os administradores sempre.",
+        "weatherProviderMetNorway": "MET Norway (api.met.no)",
+        "weatherProviderLabel": "Weather data source",
+        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast) — good for Norway, works worldwide, no API key."
     },
     "login": {
         "tagline": "Bem-vindo de volta. A tua casa num só lugar.",

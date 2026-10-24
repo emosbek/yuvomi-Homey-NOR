@@ -1,18 +1,33 @@
 /**
  * Modul: Wetter-Proxy (Weather)
- * Zweck: Serverseitiger Proxy für Open-Meteo (Default, kein API-Key) und
- *        OpenWeatherMap (Legacy, via .env). Provider-Auflösung: DB-Präferenzen
- *        zuerst, dann Env-Vars (services/weather-source.js).
+ * Zweck: Serverseitiger Proxy für Open-Meteo (Default, kein API-Key),
+ *        MET Norway / api.met.no (optional, kein API-Key, identifizierbarer
+ *        User-Agent Pflicht) und OpenWeatherMap (Legacy, via .env).
+ *        Provider-Auflösung: DB-Präferenzen zuerst, dann Env-Vars
+ *        (services/weather-source.js).
  * Abhängigkeiten: express, db (sync_config), services/weather-source,
- *                 natives global fetch (Node >=22)
+ *                 services/met-norway-weather, natives global fetch (Node >=22)
  */
 
+import { readFileSync } from 'node:fs';
 import { createLogger } from '../logger.js';
 import express from 'express';
 import * as db from '../db.js';
-import { utcDateKey } from '../utils/timezone.js';
+import { householdTimeZone, utcDateKey, utcToWall } from '../utils/timezone.js';
 import { resolveWeatherSource } from '../services/weather-source.js';
+import {
+  MET_NORWAY_FORECAST_URL,
+  buildMetNorwayWeather,
+  roundMetCoord,
+} from '../services/met-norway-weather.js';
 import { supportedLocaleFor } from '../utils/i18n.js';
+
+const { version: APP_VERSION } = JSON.parse(
+  readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
+);
+// MET Terms of Service: fehlender/generischer User-Agent → 403. Kontakt-URL
+// nennt das Projekt, nicht den einzelnen Self-Hoster.
+const MET_USER_AGENT = `Yuvomi/${APP_VERSION} (+https://github.com/ulsklyc/yuvomi; self-hosted)`;
 
 const log = createLogger('Weather');
 
@@ -190,8 +205,17 @@ export function buildRouter({ cfgGet: cfgGetFn = cfgGet, fetchFn = null, logger 
   function logIncompleteSetup(provider, lat, lon) {
     if (provider === 'openweathermap' && !process.env.OPENWEATHER_API_KEY) {
       logOnce('owm:no-key', 'OpenWeatherMap selected, but OPENWEATHER_API_KEY is not set - no weather');
-    } else if (provider === 'open-meteo' && !(lat && lon)) {
-      logOnce('om:no-coords', 'Open-Meteo selected, but no coordinates are stored - no weather');
+    } else if ((provider === 'open-meteo' || provider === 'met-norway') && !(lat && lon)) {
+      const name = provider === 'met-norway' ? 'MET Norway' : 'Open-Meteo';
+      logOnce(`${provider}:no-coords`, `${name} selected, but no coordinates are stored - no weather`);
+    }
+  }
+
+  function weatherLocationTimeZone() {
+    try {
+      return householdTimeZone(db.get());
+    } catch {
+      return 'UTC';
     }
   }
 
@@ -238,7 +262,9 @@ export function buildRouter({ cfgGet: cfgGetFn = cfgGet, fetchFn = null, logger 
       // ── 2. Cache check ───────────────────────────────────────
       const cacheKey = provider === 'open-meteo'
         ? `om:${lat}|${lon}|${units}`
-        : `owm:${owmCity}|${units}|${owmLang}`;
+        : provider === 'met-norway'
+          ? `met:${roundMetCoord(lat)}|${roundMetCoord(lon)}|${units}`
+          : `owm:${owmCity}|${units}|${owmLang}`;
 
       // Die halbe Stunde ist die eine Grenze, der ORTSTAG die andere. Eine kurz
       // vor Mitternacht abgelegte Antwort wuerde sonst noch eine halbe Stunde
@@ -315,6 +341,46 @@ export function buildRouter({ cfgGet: cfgGetFn = cfgGet, fetchFn = null, logger 
           today: days.find((d) => d.date === omToday) ?? null,
           forecast: days.filter((d) => d.date > omToday).slice(0, 5),
         };
+      } else if (provider === 'met-norway') {
+        const metLat = roundMetCoord(lat);
+        const metLon = roundMetCoord(lon);
+        if (metLat === null || metLon === null) {
+          logOnce('met-norway:bad-coords', 'MET Norway selected, but coordinates are invalid - no weather');
+          return res.json({ data: null, reason: WEATHER_REASON.NOT_CONFIGURED });
+        }
+        const url = `${MET_NORWAY_FORECAST_URL}?lat=${encodeURIComponent(metLat)}&lon=${encodeURIComponent(metLon)}`;
+        const metRes = await doFetch(url, {
+          signal: AbortSignal.timeout(8000),
+          headers: {
+            Accept: 'application/json',
+            'User-Agent': MET_USER_AGENT,
+          },
+        });
+        if (!metRes.ok) {
+          logOnce(`met-norway:http:${metRes.status}`, `MET Norway request failed: HTTP ${metRes.status}`);
+          return res.json({ data: null, reason: WEATHER_REASON.UPSTREAM_ERROR });
+        }
+        const metBody = await metRes.json();
+        const tz = weatherLocationTimeZone();
+        const dateKeyFn = (iso) => utcToWall(iso, tz)?.date ?? String(iso).slice(0, 10);
+        data = buildMetNorwayWeather(metBody, {
+          city,
+          units,
+          lat: metLat,
+          lon: metLon,
+          dateKeyFn,
+        });
+        if (!data) {
+          logOnce('met-norway:empty', 'MET Norway returned no usable timeseries - no weather');
+          return res.json({ data: null, reason: WEATHER_REASON.UPSTREAM_ERROR });
+        }
+        // Offset der Haushaltszone am aktuellen Zeitpunkt - fuer die Cache-
+        // Tagesgrenze (MET liefert keinen utc_offset_seconds wie Open-Meteo).
+        const wallNow = utcToWall(new Date().toISOString(), tz);
+        if (wallNow?.date && wallNow?.time) {
+          const asUtc = Date.parse(`${wallNow.date}T${wallNow.time}Z`);
+          if (Number.isFinite(asUtc)) locationOffsetMs = asUtc - Date.now();
+        }
       } else {
         // OWM legacy path
         const currentUrl = `https://api.openweathermap.org/data/2.5/weather?${cityParam(owmCity)}&appid=${owmKey}&units=${units}&lang=${owmLang}`;

@@ -22,7 +22,8 @@ function hasOwnLocation(wu) {
 
 function renderPage(container, prefs, { admin = false } = {}) {
   const wu = prefs.weather_user ?? { lat: null, lon: null, city: null, units: null, auto_locate: null };
-  const providerIsOpenMeteo = prefs.weather_provider === 'open-meteo'
+  const providerUsesCoords = prefs.weather_provider === 'open-meteo'
+    || prefs.weather_provider === 'met-norway'
     || (!prefs.weather_provider && hasOwnLocation(wu));
   const own = hasOwnLocation(wu);
   container.replaceChildren();
@@ -41,7 +42,7 @@ function renderPage(container, prefs, { admin = false } = {}) {
           ${weatherLocationFieldsHtml({
             scope: SCOPE,
             values: wu,
-            autoLocateDisabled: !providerIsOpenMeteo,
+            autoLocateDisabled: !providerUsesCoords,
           })}
           <div id="pweather-form-error" class="form-error" role="alert" hidden></div>
           <div class="settings-form-actions">

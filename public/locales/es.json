@@ -2672,8 +2672,8 @@
         "weatherUnitsImperial": "Imperial (°F, mph)",
         "weatherSave": "Guardar",
         "weatherSaved": "Widget de clima guardado.",
-        "weatherRemove": "Desactivar Open-Meteo",
-        "weatherRemoved": "Open-Meteo desactivado.",
+        "weatherRemove": "Disable saved weather",
+        "weatherRemoved": "Saved weather location disabled.",
         "weatherRemovedEnv": "Ubicación guardada eliminada. Vuelve a aplicarse la ubicación de la configuración del servidor.",
         "weatherActiveProvider": "Proveedor activo",
         "weatherProviderOpenMeteo": "Open-Meteo",
@@ -2682,7 +2682,7 @@
         "weatherProviderNone": "No configurado",
         "weatherEnvLocationLabel": "Ubicación",
         "weatherEnvHint": "Estos valores proceden de la configuración del servidor (.env). Una ubicación guardada aquí tiene prioridad. Para desactivarlo, elimina las entradas {{vars}} del archivo .env y reinicia el contenedor.",
-        "weatherSwitchHint": "Open-Meteo se activará al guardar y se ignorará OWM.",
+        "weatherSwitchHint": "Saving activates the chosen source and ignores OpenWeatherMap from .env.",
         "householdWeatherOverrideHint": "Cada miembro puede definir su propia ubicación en «Mi tiempo», que sustituye a esta.",
         "weatherLocateBtn": "Detectar ubicación",
         "weatherLocateSuccess": "Ubicación detectada.",
@@ -3356,7 +3356,10 @@
         "permCapabilityTasksReorder": "Cambiar el orden de la familia",
         "permChildRoleHint": "Las cuentas infantiles nuevas reciben además, al crearse, sus propios permisos iniciales: {{list}}. Después aparecen en el miembro correspondiente.",
         "activeModulesHintMore": "Para ocultar un módulo solo para ti, ve a Módulos → Navegación.",
-        "permIntroMore": "Cada miembro puede diferir del valor predeterminado del rol. Sin ninguna configuración, cada rol tiene acceso completo; los administradores siempre."
+        "permIntroMore": "Cada miembro puede diferir del valor predeterminado del rol. Sin ninguna configuración, cada rol tiene acceso completo; los administradores siempre.",
+        "weatherProviderMetNorway": "MET Norway (api.met.no)",
+        "weatherProviderLabel": "Weather data source",
+        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast) — good for Norway, works worldwide, no API key."
     },
     "login": {
         "tagline": "Bienvenido de nuevo. Tu hogar en un solo lugar.",

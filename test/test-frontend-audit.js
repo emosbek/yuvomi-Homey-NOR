@@ -2605,8 +2605,9 @@ test('admin-weather leaf owns the household default location', () => {
   const source = read('../public/settings/pages/admin-weather.js');
 
   assert.match(source, /HOUSEHOLD_WEATHER_SCOPE as SCOPE/);
-  assert.match(source, /weather_provider: 'open-meteo'/);
+  assert.match(source, /weather_provider: provider/);
   assert.match(source, /weather_provider: null/);
+  assert.match(source, /value === 'met-norway'/);
   assert.match(source, /window\.yuvomi\?\.showToast/);
   assert.match(source, /await render\(container, \{ user \}\)/);
   // Die Vorrangregel muss auf dem Blatt stehen: personal-weather überschreibt

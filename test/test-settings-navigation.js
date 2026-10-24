@@ -2191,15 +2191,23 @@ test('admin weather page shows weather configured by the server', async () => {
   assert.doesNotMatch(weatherSourceHtml(stored), /weatherEnvHint/);
   assert.equal(canRemoveStoredWeather(stored), true);
 
+  const met = weatherSourceOf({
+    weather_provider: 'met-norway',
+    weather_source: { source: 'db', provider: 'met-norway', lat: '59.91', lon: '10.75', city: 'Oslo', units: 'metric' },
+  });
+  assert.match(weatherSourceHtml(met), /settings\.weatherProviderMetNorway/);
+  assert.equal(canRemoveStoredWeather(met), true);
+
   const none = weatherSourceOf({ weather_source: { source: 'none', provider: null } });
   assert.match(weatherSourceHtml(none), /settings\.weatherProviderNone/);
   assert.equal(canRemoveStoredWeather(none), false);
 
-  // Die Seite entscheidet den Vorrang nicht selbst: sie liest `weather_source`
-  // und nicht `weather_provider`, und das Entfernen loescht die Koordinaten
-  // mit - sonst kaeme die `.env` danach nie wieder zum Zug.
+  // Die Seite entscheidet den Vorrang nicht selbst fuer die Statuszeile: sie
+  // liest `weather_source`. Das Anbieter-Select liest zusaetzlich
+  // `weather_provider`, und das Entfernen loescht die Koordinaten mit - sonst
+  // kaeme die `.env` danach nie wieder zum Zug.
   const source = await readFile(new URL('../public/settings/pages/admin-weather.js', import.meta.url), 'utf8');
-  assert.doesNotMatch(source, /preferences\.weather_provider\s*===/);
+  assert.match(source, /value="met-norway"/);
   assert.match(source, /savePreferences\(\{ weather_provider: null, weather_lat: null, weather_lon: null, weather_city: '' \}\)/);
   assert.match(source, /next\.source === 'env' \? t\('settings\.weatherRemovedEnv'\)/);
 });

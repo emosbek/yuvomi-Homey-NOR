@@ -2672,8 +2672,8 @@
         "weatherUnitsImperial": "英制 (°F, mph)",
         "weatherSave": "保存",
         "weatherSaved": "天气小组件已保存。",
-        "weatherRemove": "禁用 Open-Meteo",
-        "weatherRemoved": "Open-Meteo 已禁用。",
+        "weatherRemove": "Disable saved weather",
+        "weatherRemoved": "Saved weather location disabled.",
         "weatherRemovedEnv": "已删除保存的位置。服务器配置中的位置再次生效。",
         "weatherActiveProvider": "当前提供商",
         "weatherProviderOpenMeteo": "Open-Meteo",
@@ -2682,7 +2682,7 @@
         "weatherProviderNone": "未配置",
         "weatherEnvLocationLabel": "位置",
         "weatherEnvHint": "这些值来自服务器配置（.env）。在此保存的位置优先。要关闭，请从 .env 文件中删除 {{vars}} 条目并重启容器。",
-        "weatherSwitchHint": "保存后将激活Open-Meteo并忽略OWM。",
+        "weatherSwitchHint": "Saving activates the chosen source and ignores OpenWeatherMap from .env.",
         "householdWeatherOverrideHint": "成员可以在“我的天气”中设置自己的位置，该位置将替代此处的设置。",
         "weatherLocateBtn": "获取当前位置",
         "weatherLocateSuccess": "位置获取成功。",
@@ -3356,7 +3356,10 @@
         "permCapabilityTasksReorder": "更改家庭排序",
         "permChildRoleHint": "新的儿童账户在创建时还会获得自己的初始权限：{{list}}。之后会显示在该成员处。",
         "activeModulesHintMore": "只想在自己这里隐藏，请前往「模块 → 导航」。",
-        "permIntroMore": "各个成员可以不同于角色的默认设置。若不设置，每个角色都拥有完全访问权限；管理员始终如此。"
+        "permIntroMore": "各个成员可以不同于角色的默认设置。若不设置，每个角色都拥有完全访问权限；管理员始终如此。",
+        "weatherProviderMetNorway": "MET Norway (api.met.no)",
+        "weatherProviderLabel": "Weather data source",
+        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast) — good for Norway, works worldwide, no API key."
     },
     "login": {
         "tagline": "欢迎回来。您的家，尽在一处。",

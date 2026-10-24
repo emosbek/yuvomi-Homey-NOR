@@ -2862,8 +2862,8 @@
         "weatherUnitsImperial": "Имперские (°F, миль/ч)",
         "weatherSave": "Сохранить",
         "weatherSaved": "Виджет погоды сохранён.",
-        "weatherRemove": "Отключить Open-Meteo",
-        "weatherRemoved": "Open-Meteo отключён.",
+        "weatherRemove": "Disable saved weather",
+        "weatherRemoved": "Saved weather location disabled.",
         "weatherRemovedEnv": "Сохранённое местоположение удалено. Снова действует местоположение из конфигурации сервера.",
         "weatherActiveProvider": "Активный провайдер",
         "weatherProviderOpenMeteo": "Open-Meteo",
@@ -2872,7 +2872,7 @@
         "weatherProviderNone": "Не настроено",
         "weatherEnvLocationLabel": "Местоположение",
         "weatherEnvHint": "Эти значения взяты из конфигурации сервера (.env). Местоположение, сохранённое здесь, имеет приоритет. Чтобы отключить, удалите записи {{vars}} из файла .env и перезапустите контейнер.",
-        "weatherSwitchHint": "Open-Meteo будет активирован при сохранении, OWM будет проигнорирован.",
+        "weatherSwitchHint": "Saving activates the chosen source and ignores OpenWeatherMap from .env.",
         "householdWeatherOverrideHint": "Участники могут задать своё место в разделе «Моя погода», оно заменяет это.",
         "weatherLocateBtn": "Определить местоположение",
         "weatherLocateSuccess": "Местоположение успешно определено.",
@@ -3566,7 +3566,10 @@
         "permCapabilityTasksReorder": "Изменять порядок семьи",
         "permChildRoleHint": "Новые детские аккаунты при создании также получают собственные стартовые права: {{list}}. Потом они указаны у этого участника.",
         "activeModulesHintMore": "Чтобы скрыть модуль только у себя, откройте Модули → Навигация.",
-        "permIntroMore": "Отдельные участники могут отличаться от значения по умолчанию для роли. Без настроек каждая роль имеет полный доступ; администраторы - всегда."
+        "permIntroMore": "Отдельные участники могут отличаться от значения по умолчанию для роли. Без настроек каждая роль имеет полный доступ; администраторы - всегда.",
+        "weatherProviderMetNorway": "MET Norway (api.met.no)",
+        "weatherProviderLabel": "Weather data source",
+        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast) — good for Norway, works worldwide, no API key."
     },
     "login": {
         "tagline": "С возвращением. Ваш дом - в одном месте.",

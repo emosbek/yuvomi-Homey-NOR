@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **MET Norway as a weather data source.** Under Settings → Household → Photos and weather you can
+  choose Open-Meteo (default) or MET Norway (`api.met.no` Locationforecast via [data.met.no](https://data.met.no/)).
+  Same coordinates form, no API key; the server sends the required identifying User-Agent. Forecast
+  icons and day ranges match the existing widget shape.
+
 - **Birthday import offers "Select all" and "Deselect all".** Select every contact
   with a birthday that has not already been imported, or clear the selection, with
   one button above the list. Large selections are imported in batches. If a later
