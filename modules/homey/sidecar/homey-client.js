@@ -130,11 +130,21 @@ function finite(value) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
-function capabilityRank(id) {
+function capabilityRank(id, setable) {
+  if (!setable) return 10;
   if (id === 'onoff') return 0;
   if (id === 'button') return 1;
   if (id === 'dim' || id.startsWith('dim.')) return 2;
   return 3;
+}
+
+function isSenseCapability(id, cap) {
+  if (!cap || cap.setable === true) return false;
+  if (cap.type === 'button') return false;
+  const key = String(id || '');
+  if (key.startsWith('measure_') || key.startsWith('alarm_')) return true;
+  if (cap.getable === false) return false;
+  return cap.type === 'number' || cap.type === 'boolean' || cap.type === 'string';
 }
 
 function capabilityList(device) {
@@ -144,7 +154,9 @@ function capabilityList(device) {
   const ids = Array.isArray(device.capabilities) ? device.capabilities : Object.keys(obj);
   return ids.map((id) => {
     const cap = obj[id] && typeof obj[id] === 'object' ? obj[id] : null;
-    if (!cap || cap.setable !== true) return null;
+    if (!cap) return null;
+    const setable = cap.setable === true;
+    if (!setable && !isSenseCapability(id, cap)) return null;
     const values = Array.isArray(cap.values)
       ? cap.values
         .map((entry) => {
@@ -170,9 +182,12 @@ function capabilityList(device) {
       max: finite(cap.max),
       step: finite(cap.step),
       values,
+      setable,
+      role: setable ? 'control' : 'sense',
     };
   }).filter((cap) => cap && cap.id && cap.id.length <= 120)
-    .sort((a, b) => capabilityRank(a.id) - capabilityRank(b.id) || a.title.localeCompare(b.title, 'nb'));
+    .sort((a, b) => capabilityRank(a.id, a.setable) - capabilityRank(b.id, b.setable)
+      || a.title.localeCompare(b.title, 'nb'));
 }
 
 export function normalizeDevices(data) {

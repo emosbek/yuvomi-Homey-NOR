@@ -115,3 +115,43 @@
 .homey-ring .form-input {
   flex: 1 1 12rem;
 }
+
+.homey-widget__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+  gap: var(--space-2);
+  padding: 0 var(--space-3) var(--space-3);
+}
+
+.homey-widget__pin {
+  min-height: 5.5rem;
+}
+
+.homey-widget__hint {
+  margin: 0 var(--space-3) var(--space-2);
+}
+
+.homey-pin--display {
+  cursor: default;
+}
+
+.homey-pin__reading {
+  margin-top: var(--space-1);
+  font-size: var(--text-xl);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.2;
+  color: var(--color-text);
+}
+
+.homey-pin-edit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.homey-pin-edit .form-label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}

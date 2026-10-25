@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # Install Yuvomi and the Homey gateway on the Raspberry Pi that can see Homey.
 # Run it on the Pi, not from Cursor Cloud:
-#   curl -fsSL https://raw.githubusercontent.com/emosbek/yuvomiMo/cursor/homey-module-a566/modules/homey/install-pi.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/emosbek/yuvomi-Homey-NOR/cursor/homey-overview-widget-be88/modules/homey/install-pi.sh | sudo bash
 set -euo pipefail
 
-REPO="${YUVOMI_REPO:-https://github.com/emosbek/yuvomiMo.git}"
-BRANCH="${YUVOMI_BRANCH:-cursor/homey-module-a566}"
+REPO="${YUVOMI_REPO:-https://github.com/emosbek/yuvomi-Homey-NOR.git}"
+BRANCH="${YUVOMI_BRANCH:-cursor/homey-overview-widget-be88}"
 DEST="${YUVOMI_DIR:-/opt/yuvomi}"
 HOST="${YUVOMI_HOST:-192.168.1.24}"
 
 if [ "$(id -u)" -ne 0 ]; then
-  echo "Kjør skriptet med sudo på Raspberry Pi-en." >&2
+  echo "Run this script with sudo on the Raspberry Pi." >&2
   exit 1
 fi
 
@@ -18,14 +18,14 @@ arch="$(uname -m)"
 case "$arch" in
   aarch64|arm64|x86_64) ;;
   *)
-    echo "Denne maskinen er ${arch}. Yuvomi-imaget finnes for arm64 og amd64." >&2
+    echo "This machine is ${arch}. The Yuvomi image exists for arm64 and amd64." >&2
     exit 1
     ;;
 esac
 
 if ! hostname -I | tr ' ' '\n' | grep -qx "$HOST"; then
-  echo "Adressen ${HOST} ligger ikke på denne maskinen." >&2
-  echo "Kjør skriptet på Pi-en, eller sett YUVOMI_HOST til adressen den faktisk har." >&2
+  echo "Address ${HOST} is not on this machine." >&2
+  echo "Run the script on the Pi, or set YUVOMI_HOST to the address it actually has." >&2
   exit 1
 fi
 
@@ -59,7 +59,7 @@ TRUST_PROXY=loopback
 NODE_ENV=production
 EOF
   chmod 600 "${DEST}/.env"
-  echo "Ny ${DEST}/.env. Ta vare på filen. Databasen kan ikke åpnes uten nøkkelen i den."
+  echo "Created ${DEST}/.env. Keep that file. The database cannot be opened without the key in it."
 fi
 
 # The gateway loads its code once, at start. A later git checkout does not
@@ -76,10 +76,10 @@ for _ in $(seq 1 60); do
 done
 
 if [ "$ok" -ne 1 ]; then
-  echo "Containerne er startet, men http://127.0.0.1:3000/health svarte ikke ennå." >&2
-  echo "Logg: docker compose -f ${DEST}/modules/homey/compose.yml logs" >&2
+  echo "Containers are up, but http://127.0.0.1:3000/health has not answered yet." >&2
+  echo "Logs: docker compose -f ${DEST}/modules/homey/compose.yml logs" >&2
   exit 1
 fi
 
-echo "Yuvomi kjører på http://${HOST}:3000"
-echo "Åpne den adressen, lag en administrator, og lim inn Homey-adressen i modulen."
+echo "Yuvomi is running at http://${HOST}:3000"
+echo "Open that address, create an administrator, and paste the Homey address in the module."

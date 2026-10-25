@@ -1,6 +1,37 @@
 import { t } from '/i18n.js';
+import {
+  deviceClassIcon,
+  formatNumericPinValue,
+  ICON_CHOICES,
+  isDisplayMode,
+  suggestIcon,
+} from './pin-style.js';
 
 const API = '/api/extensions/homey';
+
+export { ICON_CHOICES, isDisplayMode, suggestIcon };
+
+export function deviceIcon(deviceClass) {
+  return deviceClassIcon(deviceClass);
+}
+
+export function pinIcon(pin) {
+  const custom = String(pin?.icon || '').trim();
+  if (custom) return custom;
+  return suggestIcon(pin?.capabilityId, pin?.deviceClass, pin?.kind);
+}
+
+export function valueLabel(pin) {
+  if (pin.unavailable) return t('extensions.homey.page.unavailable');
+  if (typeof pin.value === 'boolean') {
+    return pin.value ? t('extensions.homey.page.on') : t('extensions.homey.page.off');
+  }
+  const numeric = formatNumericPinValue(pin);
+  if (numeric != null) return numeric;
+  if (pin.value == null || pin.value === '') return '';
+  const units = pin.units ? ` ${pin.units}` : '';
+  return `${pin.value}${units}`;
+}
 
 export function reasonMessage(reason, detail) {
   if (detail && (reason === 'address' || reason === 'homey_unreachable' || reason === 'stream')) {

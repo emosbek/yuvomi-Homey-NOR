@@ -131,5 +131,19 @@ export function createStore(dir) {
         pins: current.pins.filter((pin) => pin.id !== id),
       }));
     },
+    updatePin(id, patch) {
+      return mutate((current) => {
+        const index = current.pins.findIndex((pin) => pin.id === id);
+        if (index === -1) {
+          const err = new Error('Button was not found.');
+          err.status = 404;
+          err.reason = 'invalid';
+          throw err;
+        }
+        const pins = current.pins.slice();
+        pins[index] = { ...pins[index], ...patch, id: pins[index].id };
+        return { ...current, pins };
+      }).then((next) => next.pins.find((pin) => pin.id === id));
+    },
   };
 }

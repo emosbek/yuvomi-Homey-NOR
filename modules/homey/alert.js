@@ -10,7 +10,18 @@ const POLL_MS = 2000;
 const QUIET_MS = 4000;
 
 function phrases() {
-  const lang = String(document.documentElement.lang || navigator.language || 'nb').toLowerCase();
+  const lang = String(document.documentElement.lang || navigator.language || 'en').toLowerCase();
+  if (lang.startsWith('nb') || lang.startsWith('nn') || lang === 'no') {
+    return {
+      title: 'Noen ringer på',
+      body: 'Det er noen ved døren.',
+      dismiss: 'Lukk',
+      testBody: 'Dette er en test av kortet og kameraet. Dørklokken og klokkene brukes ikke.',
+      noPicture: 'Homey har ikke et bilde fra dette kameraet.',
+      pictureError: 'Kamerabildet kom ikke.',
+      streamError: 'Videostrømmen startet ikke.',
+    };
+  }
   if (lang.startsWith('de')) {
     return {
       title: 'Es klingelt',
@@ -22,25 +33,14 @@ function phrases() {
       streamError: 'Der Videostream hat nicht gestartet.',
     };
   }
-  if (lang.startsWith('en')) {
-    return {
-      title: 'Someone is ringing',
-      body: 'There is someone at the door.',
-      dismiss: 'Close',
-      testBody: 'This is a test of the card and the camera. The doorbell and the chimes are not used.',
-      noPicture: 'Homey has no picture from this camera.',
-      pictureError: 'The camera picture did not arrive.',
-      streamError: 'The video stream did not start.',
-    };
-  }
   return {
-    title: 'Noen ringer på',
-    body: 'Det er noen ved døren.',
-    dismiss: 'Lukk',
-    testBody: 'Dette er en test av kortet og kameraet. Dørklokken og klokkene brukes ikke.',
-    noPicture: 'Homey har ikke et bilde fra dette kameraet.',
-    pictureError: 'Kamerabildet kom ikke.',
-    streamError: 'Videostrømmen startet ikke.',
+    title: 'Someone is ringing',
+    body: 'There is someone at the door.',
+    dismiss: 'Close',
+    testBody: 'This is a test of the card and the camera. The doorbell and the chimes are not used.',
+    noPicture: 'Homey has no picture from this camera.',
+    pictureError: 'The camera picture did not arrive.',
+    streamError: 'The video stream did not start.',
   };
 }
 
