@@ -1,28 +1,24 @@
 import { t } from '/i18n.js';
+import {
+  deviceClassIcon,
+  formatNumericPinValue,
+  ICON_CHOICES,
+  isDisplayMode,
+  suggestIcon,
+} from './pin-style.js';
 
 const API = '/api/extensions/homey';
 
+export { ICON_CHOICES, isDisplayMode, suggestIcon };
+
 export function deviceIcon(deviceClass) {
-  return {
-    light: 'lightbulb',
-    socket: 'plug',
-    thermostat: 'thermometer',
-    lock: 'lock',
-    windowcoverings: 'blinds',
-    speaker: 'speaker',
-    fan: 'fan',
-    heater: 'flame',
-    doorbell: 'bell',
-    sensor: 'activity',
-    tv: 'tv',
-    button: 'circle',
-  }[deviceClass] || '';
+  return deviceClassIcon(deviceClass);
 }
 
 export function pinIcon(pin) {
-  if (pin.kind === 'flow') return 'workflow';
-  if (pin.kind === 'webhook') return 'webhook';
-  return deviceIcon(pin.deviceClass);
+  const custom = String(pin?.icon || '').trim();
+  if (custom) return custom;
+  return suggestIcon(pin?.capabilityId, pin?.deviceClass, pin?.kind);
 }
 
 export function valueLabel(pin) {
@@ -30,13 +26,11 @@ export function valueLabel(pin) {
   if (typeof pin.value === 'boolean') {
     return pin.value ? t('extensions.homey.page.on') : t('extensions.homey.page.off');
   }
-  if (typeof pin.value === 'number'
-    && (pin.capabilityId === 'dim' || String(pin.capabilityId || '').startsWith('dim.'))
-    && pin.value >= 0 && pin.value <= 1) {
-    return `${Math.round(pin.value * 100)} %`;
-  }
+  const numeric = formatNumericPinValue(pin);
+  if (numeric != null) return numeric;
   if (pin.value == null || pin.value === '') return '';
-  return String(pin.value);
+  const units = pin.units ? ` ${pin.units}` : '';
+  return `${pin.value}${units}`;
 }
 
 export function reasonMessage(reason, detail) {

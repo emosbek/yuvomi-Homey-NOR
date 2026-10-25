@@ -26,8 +26,9 @@ npm run dev:homey
 That starts Yuvomi on port 3001 and the gateway on port 3000.
 
 3. Open Homey in the menu. Paste the address, for example `http://192.168.1.50`, and the key. Only an administrator can save it.
-4. Pin a device, a flow or a webhook. The button on the page runs it.
-5. Pinned buttons also appear in the **Homey** widget on Overview. The widget is on by default; hide it or change its size under Customize.
+4. Pin a control (light, switch, flow, webhook) or show a sensor (temperature, humidity, power). Controls run on press; sensors only display the live value.
+5. Use **Edit** on a pin to change its name and icon (thermometer, lightbulb, speaker, and so on).
+6. Pinned tiles also appear in the **Homey** widget on Overview. The widget is on by default; hide it or change its size under Customize.
 
 The key is written to `data/homey/state.json` with owner-only file permissions. No route returns it.
 

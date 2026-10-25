@@ -11,6 +11,7 @@ import { normalizeCameras, normalizeDevices, normalizeZones, pickCamera, withZon
 import { createHomeyServer } from '../sidecar/server.js';
 import { createStore } from '../sidecar/store.js';
 import { createGateway } from '../gateway.js';
+import { formatNumericPinValue, isDisplayMode, suggestIcon } from '../pin-style.js';
 
 const root = fileURLToPath(new URL('../../..', import.meta.url));
 const TOKEN = 'super-secret-token-value';
@@ -71,7 +72,7 @@ function admin(res) {
   }));
 }
 
-test('a Homey device list keeps rooms and only controls that can be set', () => {
+test('a Homey device list keeps rooms, controls, and readable sensors', () => {
   const devices = normalizeDevices({
     lamp: {
       id: 'lamp',
@@ -82,7 +83,7 @@ test('a Homey device list keeps rooms and only controls that can be set', () => 
       capabilitiesObj: {
         onoff: { setable: true, type: 'boolean', title: { nb: 'På', en: 'On' }, value: false },
         dim: { setable: true, type: 'number', title: 'Dim', min: 0, max: 1, step: 0.01, value: 0.4, units: '%' },
-        measure_power: { setable: false, type: 'number', title: 'Effekt' },
+        measure_power: { setable: false, type: 'number', title: 'Effekt', units: 'W', value: 12 },
       },
     },
     sensor: {
@@ -92,7 +93,14 @@ test('a Homey device list keeps rooms and only controls that can be set', () => 
       zone: 'zone-gang',
       capabilities: ['measure_temperature'],
       capabilitiesObj: {
-        measure_temperature: { setable: false, type: 'number', title: 'Temperatur' },
+        measure_temperature: {
+          setable: false,
+          getable: true,
+          type: 'number',
+          title: 'Temperatur',
+          units: '°C',
+          value: 21.5,
+        },
       },
     },
   });
@@ -100,15 +108,21 @@ test('a Homey device list keeps rooms and only controls that can be set', () => 
     'zone-stue': { id: 'zone-stue', name: 'Stue' },
     'zone-gang': { id: 'zone-gang', name: 'Gang' },
   }));
-  assert.equal(named.length, 1);
-  assert.equal(named[0].zone, 'Stue');
-  assert.equal(named[0].deviceClass, 'light');
-  assert.equal(named[0].zoneId, undefined);
-  assert.deepEqual(named[0].capabilities.map((cap) => cap.id), ['onoff', 'dim']);
-  assert.equal(named[0].capabilities[0].title, 'På');
-  assert.equal(named[0].capabilities[1].min, 0);
-  assert.equal(named[0].capabilities[1].max, 1);
-  assert.equal(named[0].capabilities[1].step, 0.01);
+  assert.equal(named.length, 2);
+  const lamp = named.find((device) => device.id === 'lamp');
+  const sensor = named.find((device) => device.id === 'sensor');
+  assert.equal(lamp.zone, 'Stue');
+  assert.equal(lamp.deviceClass, 'light');
+  assert.equal(lamp.zoneId, undefined);
+  assert.deepEqual(lamp.capabilities.map((cap) => cap.id), ['onoff', 'dim', 'measure_power']);
+  assert.equal(lamp.capabilities[0].title, 'På');
+  assert.equal(lamp.capabilities[1].min, 0);
+  assert.equal(lamp.capabilities[1].max, 1);
+  assert.equal(lamp.capabilities[1].step, 0.01);
+  assert.equal(lamp.capabilities[2].role, 'sense');
+  assert.equal(sensor.capabilities[0].id, 'measure_temperature');
+  assert.equal(sensor.capabilities[0].role, 'sense');
+  assert.equal(sensor.capabilities[0].units, '°C');
 });
 
 test('a doorbell without controls still counts as a camera and hides its address', () => {
@@ -977,6 +991,125 @@ test('the gateway serves Homey itself and forwards everything else', async () =>
   } finally {
     await close(gateway);
     await close(upstream);
+    await close(me.server);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('pin style picks icons and formats sensor readings', () => {
+  assert.equal(suggestIcon('measure_temperature', 'sensor', 'capability'), 'thermometer');
+  assert.equal(suggestIcon('onoff', 'light', 'capability'), 'lightbulb');
+  assert.equal(suggestIcon('volume_set', 'speaker', 'capability'), 'volume-2');
+  assert.equal(suggestIcon('', '', 'flow'), 'workflow');
+  assert.equal(isDisplayMode({ mode: 'display' }), true);
+  assert.equal(formatNumericPinValue({
+    capabilityId: 'measure_temperature',
+    value: 21.46,
+    units: '°C',
+  }), '21.5 °C');
+});
+
+test('sidecar pins a temperature sensor as a display tile and allows editing', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'homey-display-'));
+  const me = startMe((req, res) => {
+    if (!String(req.headers.cookie || '').includes('yuvomi.sid=ok')) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end('{"error":"Unauthorized"}');
+      return;
+    }
+    admin(res);
+  });
+  const meUrl = await listen(me.server);
+  let temperature = 19.2;
+  const fakeHomey = http.createServer((req, res) => {
+    if (req.url === '/api/manager/devices/device/') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        sensor: {
+          id: 'sensor',
+          name: 'Termometer',
+          class: 'sensor',
+          capabilities: ['measure_temperature'],
+          capabilitiesObj: {
+            measure_temperature: {
+              value: temperature,
+              setable: false,
+              getable: true,
+              type: 'number',
+              title: 'Temperatur',
+              units: '°C',
+            },
+          },
+        },
+      }));
+      return;
+    }
+    res.writeHead(404).end();
+  });
+  const homeyUrl = await listen(fakeHomey);
+  const sidecar = createHomeyServer({
+    dataDir: dir,
+    yuvomiUrl: meUrl,
+    allowLoopback: true,
+  });
+  const base = await listen(sidecar);
+  try {
+    const status = await call(base, '/api/extensions/homey/status', { cookie: 'yuvomi.sid=ok' });
+    assert.equal(status.status, 200);
+    const jar = `yuvomi.sid=ok; ${status.cookie}`;
+    const saved = await call(base, '/api/extensions/homey/connection', {
+      method: 'PUT',
+      cookie: jar,
+      csrf: status.body.csrfToken,
+      json: { address: homeyUrl, token: TOKEN },
+    });
+    assert.equal(saved.status, 200, JSON.stringify(saved.body));
+    const pinned = await call(base, '/api/extensions/homey/pins', {
+      method: 'POST',
+      cookie: jar,
+      csrf: saved.body.csrfToken,
+      json: {
+        kind: 'capability',
+        label: 'Gang',
+        detail: 'Temperatur',
+        deviceId: 'sensor',
+        capabilityId: 'measure_temperature',
+        deviceClass: 'sensor',
+        mode: 'display',
+        units: '°C',
+      },
+    });
+    assert.equal(pinned.status, 201, JSON.stringify(pinned.body));
+    assert.equal(pinned.body.pin.mode, 'display');
+    assert.equal(pinned.body.pin.icon, 'thermometer');
+    const list = await call(base, '/api/extensions/homey/pins', { cookie: jar });
+    assert.equal(list.status, 200);
+    assert.equal(list.body.pins[0].value, 19.2);
+    assert.equal(list.body.pins[0].mode, 'display');
+    const activate = await call(base, `/api/extensions/homey/pins/${pinned.body.pin.id}/activate`, {
+      method: 'POST',
+      cookie: jar,
+      csrf: list.body.csrfToken,
+      json: {},
+    });
+    assert.equal(activate.status, 400);
+    assert.equal(activate.body.reason, 'display');
+    const patched = await call(base, `/api/extensions/homey/pins/${pinned.body.pin.id}`, {
+      method: 'PATCH',
+      cookie: jar,
+      csrf: list.body.csrfToken,
+      json: { label: 'Hall sensor', icon: 'droplet' },
+    });
+    assert.equal(patched.status, 200, JSON.stringify(patched.body));
+    assert.equal(patched.body.pin.label, 'Hall sensor');
+    assert.equal(patched.body.pin.icon, 'droplet');
+    temperature = 20.1;
+    const refreshed = await call(base, '/api/extensions/homey/pins', { cookie: jar });
+    assert.equal(refreshed.body.pins[0].value, 20.1);
+    assert.equal(refreshed.body.pins[0].label, 'Hall sensor');
+  } finally {
+    await close(sidecar);
+    await close(fakeHomey);
     await close(me.server);
     rmSync(dir, { recursive: true, force: true });
   }

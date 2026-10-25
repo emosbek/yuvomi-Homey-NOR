@@ -2,8 +2,8 @@
   "manifestVersion": 1,
   "id": "homey",
   "name": "Homey",
-  "version": "1.1.0",
-  "description": "Pin Homey devices, flows and webhooks as buttons for the household.",
+  "version": "1.2.0",
+  "description": "Pin Homey devices, flows and sensors for the household, with custom labels and icons.",
   "entry": "index.js",
   "style": "style.css",
   "settings": {

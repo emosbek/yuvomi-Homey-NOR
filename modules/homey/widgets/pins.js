@@ -2,7 +2,7 @@ import { t } from '/i18n.js';
 import { ensureStyle } from '/utils/component-style.js';
 import { mountEmptyState } from '/utils/empty-state.js';
 import { showToast } from '/utils/toast-show.js';
-import { homeyApi, pinIcon, valueLabel } from '../browser.js';
+import { homeyApi, isDisplayMode, pinIcon, valueLabel } from '../browser.js';
 
 const STYLE = '/api/v1/modules/assets/homey/style.css';
 const HOMEY_PATH = '/m/homey';
@@ -52,13 +52,16 @@ function header(title, count) {
   return head;
 }
 
-function pinButton(pin, { access, onActivate }) {
-  const press = document.createElement('button');
-  press.type = 'button';
-  press.className = `card card--interactive card--padded homey-pin homey-widget__pin${pin.value === true ? ' homey-pin--on' : ''}`;
-  press.dataset.pinId = pin.id;
-  if (pin.mode === 'toggle') press.setAttribute('aria-pressed', pin.value === true ? 'true' : 'false');
-  press.disabled = access !== 'write' || pin.unavailable;
+function pinTile(pin, { access, onActivate }) {
+  const display = isDisplayMode(pin);
+  const face = document.createElement(display ? 'div' : 'button');
+  if (!display) face.type = 'button';
+  face.className = `card card--padded homey-pin homey-widget__pin${display ? ' homey-pin--display' : ' card--interactive'}${pin.value === true ? ' homey-pin--on' : ''}`;
+  face.dataset.pinId = pin.id;
+  if (!display && pin.mode === 'toggle') {
+    face.setAttribute('aria-pressed', pin.value === true ? 'true' : 'false');
+  }
+  if (!display) face.disabled = access !== 'write' || pin.unavailable;
 
   const titleRow = document.createElement('span');
   titleRow.className = 'homey-pin__title';
@@ -78,11 +81,11 @@ function pinButton(pin, { access, onActivate }) {
   detail.className = 'homey-pin__detail';
   detail.textContent = pin.detail || '';
   const value = document.createElement('span');
-  value.className = 'homey-pin__value';
+  value.className = display ? 'homey-pin__reading' : 'homey-pin__value';
   value.textContent = valueLabel(pin);
-  press.append(titleRow, detail, value);
-  press.addEventListener('click', () => onActivate(pin, press));
-  return press;
+  face.append(titleRow, detail, value);
+  if (!display) face.addEventListener('click', () => onActivate(pin, face));
+  return face;
 }
 
 /**
@@ -193,7 +196,7 @@ export async function renderWidget(container) {
     const grid = document.createElement('div');
     grid.className = 'homey-widget__grid';
     for (const pin of pins) {
-      grid.append(pinButton(pin, { access, onActivate: activate }));
+      grid.append(pinTile(pin, { access, onActivate: activate }));
     }
     root.append(grid);
     paintIcons(root);

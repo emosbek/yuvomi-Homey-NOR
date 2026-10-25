@@ -8,6 +8,7 @@ import http from 'node:http';
 import https from 'node:https';
 import { classifyNetworkError, createHomeyClient, pickCamera, withZoneNames } from './homey-client.js';
 import { inspectAddress, inspectStreamUrl } from './guard.js';
+import { cleanIconName, suggestIcon } from '../pin-style.js';
 import { createSessionResolver, moduleAccess } from './session.js';
 import { createStore } from './store.js';
 
@@ -121,6 +122,17 @@ function normalizeValue(value) {
   throw new HttpError(400, 'invalid', 'Value is invalid.');
 }
 
+function pinIconField(body, fallback) {
+  if (body.icon === undefined || body.icon === null || body.icon === '') return fallback;
+  const icon = cleanIconName(body.icon);
+  if (!icon) throw new HttpError(400, 'invalid', 'Icon is invalid.');
+  return icon;
+}
+
+function pinUnits(body) {
+  return String(body.units ?? '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, 24);
+}
+
 function parsePin(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     throw new HttpError(400, 'invalid', 'Body must be JSON.');
@@ -130,16 +142,23 @@ function parsePin(body) {
   if (body.kind === 'capability') {
     if (!ID_RE.test(String(body.deviceId || ''))) throw new HttpError(400, 'invalid', 'Device is invalid.');
     if (!CAP_RE.test(String(body.capabilityId || ''))) throw new HttpError(400, 'invalid', 'Capability is invalid.');
-    const mode = body.mode === 'set' ? 'set' : 'toggle';
+    const deviceClass = cleanClass(body.deviceClass);
+    const capabilityId = String(body.capabilityId);
+    let mode = 'toggle';
+    if (body.mode === 'set') mode = 'set';
+    else if (body.mode === 'display' || body.mode === 'read') mode = 'display';
+    const icon = pinIconField(body, suggestIcon(capabilityId, deviceClass, 'capability'));
     return {
       kind: 'capability',
       label,
       detail,
       deviceId: String(body.deviceId),
-      capabilityId: String(body.capabilityId),
+      capabilityId,
       mode,
       value: mode === 'set' ? normalizeValue(body.value) : null,
-      deviceClass: cleanClass(body.deviceClass),
+      deviceClass,
+      icon,
+      units: mode === 'display' ? pinUnits(body) : '',
     };
   }
   if (body.kind === 'flow') {
@@ -150,26 +169,54 @@ function parsePin(body) {
       detail,
       flowId: String(body.flowId),
       advanced: body.advanced === true,
+      icon: pinIconField(body, 'workflow'),
+      units: '',
     };
   }
   if (body.kind === 'webhook') {
     if (!EVENT_RE.test(String(body.event || ''))) throw new HttpError(400, 'invalid', 'Event is invalid.');
     const tag = body.tag ? String(body.tag) : '';
     if (tag && !EVENT_RE.test(tag)) throw new HttpError(400, 'invalid', 'Tag is invalid.');
-    return { kind: 'webhook', label, detail, event: String(body.event), tag };
+    return {
+      kind: 'webhook',
+      label,
+      detail,
+      event: String(body.event),
+      tag,
+      icon: pinIconField(body, 'webhook'),
+      units: '',
+    };
   }
   throw new HttpError(400, 'invalid', 'Unknown button kind.');
 }
 
+function parsePinPatch(body, current) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw new HttpError(400, 'invalid', 'Body must be JSON.');
+  }
+  const next = { ...current };
+  if (body.label !== undefined) next.label = cleanLabel(body.label);
+  if (body.detail !== undefined) next.detail = cleanDetail(body.detail);
+  if (body.icon !== undefined) {
+    const icon = cleanIconName(body.icon);
+    if (body.icon !== '' && !icon) throw new HttpError(400, 'invalid', 'Icon is invalid.');
+    next.icon = icon || suggestIcon(current.capabilityId, current.deviceClass, current.kind);
+  }
+  return next;
+}
+
 function publicPin(pin, live = {}) {
+  const mode = pin.mode || (pin.kind === 'capability' ? 'toggle' : 'trigger');
   return {
     id: pin.id,
     kind: pin.kind,
     label: pin.label,
     detail: pin.detail || '',
-    mode: pin.mode || (pin.kind === 'capability' ? 'toggle' : 'trigger'),
+    mode,
     capabilityId: pin.capabilityId || '',
     deviceClass: pin.deviceClass || '',
+    icon: pin.icon || suggestIcon(pin.capabilityId, pin.deviceClass, pin.kind),
+    units: pin.units || live.units || '',
     value: live.value === undefined ? null : live.value,
     unavailable: live.unavailable === true,
   };
@@ -297,7 +344,14 @@ export function createHomeyHandler({
       const device = devices.find((item) => item.id === pin.deviceId);
       const cap = device?.capabilities.find((item) => item.id === pin.capabilityId);
       if (!cap) return publicPin(pin, { unavailable: true });
-      return publicPin(pin, { unavailable: false, value: cap.value });
+      const livePin = cap.setable === false
+        ? { ...pin, mode: 'display', units: pin.units || cap.units || '' }
+        : pin;
+      return publicPin(livePin, {
+        unavailable: false,
+        value: cap.value,
+        units: livePin.units || cap.units || '',
+      });
     });
   }
 
@@ -565,10 +619,15 @@ export function createHomeyHandler({
 
   async function activate(pin, snap) {
     if (pin.kind === 'capability') {
+      if (pin.mode === 'display' || pin.mode === 'read') {
+        throw new HttpError(400, 'display', 'This pin only shows a value.');
+      }
       const devices = await homey.devices(snap.address, snap.token);
       const device = devices.find((item) => item.id === pin.deviceId);
       const cap = device?.capabilities.find((item) => item.id === pin.capabilityId);
-      if (!cap) throw new HttpError(409, 'homey_unreachable', 'That Homey control is not available.');
+      if (!cap || cap.setable === false) {
+        throw new HttpError(409, 'homey_unreachable', 'That Homey control is not available.');
+      }
       const value = pin.mode === 'toggle' && typeof cap.value === 'boolean'
         ? !cap.value
         : (pin.mode === 'set' ? pin.value : true);
@@ -618,11 +677,11 @@ export function createHomeyHandler({
         return;
       }
       res.writeHead(204, {
-        Allow: 'GET, POST, PUT, DELETE, OPTIONS',
+        Allow: 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
         'Access-Control-Allow-Origin': req.headers.origin,
         'Access-Control-Allow-Credentials': 'true',
         'Access-Control-Allow-Headers': 'Content-Type, X-Homey-CSRF',
-        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE',
         'Access-Control-Max-Age': '600',
         Vary: 'Origin',
       });
@@ -639,7 +698,8 @@ export function createHomeyHandler({
     const { session, access } = await requireSession(req, {
       allowNone: req.method === 'GET' && (rest === '/alert' || rest === '/stream'),
     });
-    const mutating = req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE';
+    const mutating = req.method === 'POST' || req.method === 'PUT'
+      || req.method === 'PATCH' || req.method === 'DELETE';
     if (mutating) requireCsrf(req);
     const body = mutating ? await readBody(req) : null;
 
@@ -846,6 +906,17 @@ export function createHomeyHandler({
     }
 
     const pinMatch = rest.match(/^\/pins\/([^/]+)$/);
+    if (pinMatch && req.method === 'PATCH') {
+      requireWrite(access);
+      const id = decodeURIComponent(pinMatch[1]);
+      if (!PIN_RE.test(id)) throw new HttpError(400, 'invalid', 'Button is invalid.');
+      const snap = store.snapshot();
+      const current = snap.pins.find((item) => item.id === id);
+      if (!current) throw new HttpError(404, 'invalid', 'Button was not found.');
+      const saved = await store.updatePin(id, parsePinPatch(body, current));
+      reply(req, res, 200, { pin: publicPin(saved) });
+      return;
+    }
     if (pinMatch && req.method === 'DELETE') {
       requireWrite(access);
       const id = decodeURIComponent(pinMatch[1]);
