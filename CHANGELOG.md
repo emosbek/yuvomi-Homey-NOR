@@ -798,6 +798,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dates are the same or one is empty. The message now offers Undo, which takes back what was
   added to the pantry and brings the items back onto the list. The bar for checked items no
   longer stands over the dialog it opened, or over any other dialog.
+- **Hourly weather chart no longer leaves a large empty band on the left on a phone.** The panels
+  no longer use the shared `chart` class (that padding is sized for long budget axis labels) and
+  use tighter side margins for short °C / m/s ticks, so the plot uses the phone-width card.
 - **yuvomi.cloud names all 27 languages.** The landing page and the web installer section of the
   install guide still said 26 after Traditional Chinese arrived. On the platform cards "Start here"
   in German no longer covers the Docker and Podman logos, and the README's number row says

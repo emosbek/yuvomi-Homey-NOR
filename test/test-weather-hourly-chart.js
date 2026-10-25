@@ -85,15 +85,20 @@ test('weatherHourlyChartMarkup: single day has no mid-chart day label', () => {
   assert.doesNotMatch(html, /weather-hourly-chart__day-label/);
 });
 
-test('mobile: weather hourly SVGs opt out of shared chart-inset left gutter', () => {
-  assert.match(dashboardCss, /svg\.chart\.weather-hourly-chart\s*\{[^}]*--chart-inset:\s*0px/s);
-  assert.match(dashboardCss, /svg\.chart\.weather-hourly-chart\s*\{[^}]*padding-left:\s*0/s);
+test('mobile: weather hourly SVGs are not class=chart (no shared chart-inset gutter)', () => {
+  const html = weatherHourlyChartMarkup(hourlyHorizon(HOURLY, '2026-10-25'));
+  assert.doesNotMatch(html, /class="chart /);
+  assert.match(html, /class="weather-hourly-chart weather-hourly-chart--temp"/);
+  assert.match(html, /class="weather-hourly-chart weather-hourly-chart--wind"/);
+  assert.equal(WEATHER_HOURLY_TEMP.PAD_L, 22);
+  assert.equal(WEATHER_HOURLY_WIND.PAD_L, 22);
   assert.match(dashboardCss, new RegExp(
-    `svg\\.chart\\.weather-hourly-chart--temp\\s*\\{[^}]*aspect-ratio:\\s*${WEATHER_HOURLY_TEMP.W}\\s*/\\s*${WEATHER_HOURLY_TEMP.H}`,
+    `\\.weather-hourly-chart--temp\\s*\\{[^}]*aspect-ratio:\\s*${WEATHER_HOURLY_TEMP.W}\\s*/\\s*${WEATHER_HOURLY_TEMP.H}`,
     's',
   ));
   assert.match(dashboardCss, new RegExp(
-    `svg\\.chart\\.weather-hourly-chart--wind\\s*\\{[^}]*aspect-ratio:\\s*${WEATHER_HOURLY_WIND.W}\\s*/\\s*${WEATHER_HOURLY_WIND.H}`,
+    `\\.weather-hourly-chart--wind\\s*\\{[^}]*aspect-ratio:\\s*${WEATHER_HOURLY_WIND.W}\\s*/\\s*${WEATHER_HOURLY_WIND.H}`,
     's',
   ));
+  assert.doesNotMatch(dashboardCss, /svg\.chart\.weather-hourly-chart/);
 });

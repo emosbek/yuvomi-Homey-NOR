@@ -13,14 +13,14 @@ import {
   niceDomain,
 } from '/utils/chart.js';
 
-/** Øvre panel (temp + nedbør). */
+/** Øvre panel (temp + nedbør). Tight side pads: short °C / mm ticks only. */
 export const WEATHER_HOURLY_TEMP = Object.freeze({
-  W: 720, H: 160, PAD_L: 36, PAD_R: 36, PAD_T: 28, PAD_B: 22,
+  W: 720, H: 160, PAD_L: 22, PAD_R: 22, PAD_T: 28, PAD_B: 22,
 });
 
 /** Nedre panel (vind + retning). */
 export const WEATHER_HOURLY_WIND = Object.freeze({
-  W: 720, H: 120, PAD_L: 36, PAD_R: 36, PAD_T: 10, PAD_B: 28,
+  W: 720, H: 120, PAD_L: 22, PAD_R: 22, PAD_T: 10, PAD_B: 28,
 });
 
 /**
@@ -246,7 +246,7 @@ export function weatherHourlyChartMarkup(points, {
 
   return `
     <div class="weather-hourly-chart-stack">
-      <svg class="chart weather-hourly-chart weather-hourly-chart--temp" viewBox="0 0 ${tempGeo.W} ${tempGeo.H}" role="img" aria-hidden="true" focusable="false">
+      <svg class="weather-hourly-chart weather-hourly-chart--temp" viewBox="0 0 ${tempGeo.W} ${tempGeo.H}" role="img" aria-hidden="true" focusable="false">
         ${dayHeads}
         ${chartGridMarkup(tempDom.min, tempDom.max, (v) => formatTemp(v), tempGeo, tempDom.steps, { unit: '' })}
         ${dayMarks.filter((_, i) => i % 2 === 0).join('')}
@@ -256,7 +256,7 @@ export function weatherHourlyChartMarkup(points, {
         ${hourLabels}
         ${precipAxis}
       </svg>
-      <svg class="chart weather-hourly-chart weather-hourly-chart--wind" viewBox="0 0 ${windGeo.W} ${windGeo.H}" role="img" aria-hidden="true" focusable="false">
+      <svg class="weather-hourly-chart weather-hourly-chart--wind" viewBox="0 0 ${windGeo.W} ${windGeo.H}" role="img" aria-hidden="true" focusable="false">
         ${chartGridMarkup(windDom.min, windDom.max, (v) => formatWind(v), windGeo, windDom.steps, { unit: '' })}
         ${dayMarks.filter((_, i) => i % 2 === 1).join('')}
         ${hasGust ? `<polyline class="weather-hourly-chart__gust" fill="none" points="${gustPts.join(' ')}" vector-effect="non-scaling-stroke" />` : ''}
