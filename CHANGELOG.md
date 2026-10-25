@@ -801,6 +801,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Hourly weather chart no longer leaves a large empty band on the left on a phone.** The panels
   no longer use the shared `chart` class (that padding is sized for long budget axis labels) and
   use tighter side margins for short °C / m/s ticks, so the plot uses the phone-width card.
+- **Precipitation bars on the hourly weather chart stay inside the plot.** The first and last
+  hour bars were centered on the axis edges and overlapped the °C / mm labels; they are clipped
+  to the plot area now.
 - **yuvomi.cloud names all 27 languages.** The landing page and the web installer section of the
   install guide still said 26 after Traditional Chinese arrived. On the platform cards "Start here"
   in German no longer covers the Docker and Podman logos, and the README's number row says
