@@ -85,6 +85,26 @@ test('weatherHourlyChartMarkup: single day has no mid-chart day label', () => {
   assert.doesNotMatch(html, /weather-hourly-chart__day-label/);
 });
 
+test('weatherHourlyChartMarkup: precip bars stay inside plot left/right', () => {
+  const points = [
+    { date: '2026-10-25', hour: 16, temp: 8, wind: 20, precip: 3.2, icon: 'cloud-rain' },
+    { date: '2026-10-25', hour: 17, temp: 8, wind: 18, precip: 1.0, icon: 'cloud-rain' },
+    { date: '2026-10-25', hour: 18, temp: 8, wind: 16, precip: 0.4, icon: 'cloud' },
+    { date: '2026-10-25', hour: 23, temp: 7, wind: 14, precip: 2.1, icon: 'cloud-rain' },
+  ];
+  const html = weatherHourlyChartMarkup(points);
+  const left = WEATHER_HOURLY_TEMP.PAD_L;
+  const right = WEATHER_HOURLY_TEMP.W - WEATHER_HOURLY_TEMP.PAD_R;
+  const bars = [...html.matchAll(/class="weather-hourly-chart__rain"[^>]*\bx="([\d.]+)"[^>]*\bwidth="([\d.]+)"/g)];
+  assert.ok(bars.length >= 2, 'expected rain bars');
+  for (const [, xStr, wStr] of bars) {
+    const x = Number(xStr);
+    const w = Number(wStr);
+    assert.ok(x >= left - 0.01, `bar x ${x} left of plot ${left}`);
+    assert.ok(x + w <= right + 0.01, `bar right ${x + w} past plot ${right}`);
+  }
+});
+
 test('mobile: weather hourly SVGs are not class=chart (no shared chart-inset gutter)', () => {
   const html = weatherHourlyChartMarkup(hourlyHorizon(HOURLY, '2026-10-25'));
   assert.doesNotMatch(html, /class="chart /);
