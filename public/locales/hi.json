@@ -2672,8 +2672,8 @@
         "weatherUnitsImperial": "इंपीरियल (°F, mph)",
         "weatherSave": "सहेजें",
         "weatherSaved": "मौसम विजेट सहेजा गया।",
-        "weatherRemove": "Open-Meteo अक्षम करें",
-        "weatherRemoved": "Open-Meteo अक्षम किया गया।",
+        "weatherRemove": "Disable saved weather",
+        "weatherRemoved": "Saved weather location disabled.",
         "weatherRemovedEnv": "सहेजा गया स्थान हटाया गया। सर्वर कॉन्फ़िगरेशन वाला स्थान फिर से लागू है।",
         "weatherActiveProvider": "सक्रिय प्रदाता",
         "weatherProviderOpenMeteo": "Open-Meteo",
@@ -2682,7 +2682,7 @@
         "weatherProviderNone": "कॉन्फ़िगर नहीं है",
         "weatherEnvLocationLabel": "स्थान",
         "weatherEnvHint": "ये मान सर्वर कॉन्फ़िगरेशन (.env) से आते हैं। यहाँ सहेजा गया स्थान प्राथमिकता पाता है। इसे बंद करने के लिए .env फ़ाइल से {{vars}} प्रविष्टियाँ हटाएँ और कंटेनर को फिर से शुरू करें।",
-        "weatherSwitchHint": "सहेजने पर Open-Meteo सक्रिय हो जाएगा और OWM अनदेखा किया जाएगा।",
+        "weatherSwitchHint": "Saving activates the chosen source and ignores OpenWeatherMap from .env.",
         "householdWeatherOverrideHint": "सदस्य “मेरा मौसम” में अपना स्थान तय कर सकते हैं, जो इसकी जगह लेता है।",
         "weatherLocateBtn": "स्थान पता करें",
         "weatherLocateSuccess": "स्थान सफलतापूर्वक पता चला।",
@@ -3356,7 +3356,10 @@
         "permCapabilityTasksReorder": "परिवार का क्रम बदलें",
         "permChildRoleHint": "नए बच्चों के खातों को बनते समय अपनी शुरुआती अनुमतियाँ भी मिलती हैं: {{list}}। इसके बाद वे उसी सदस्य के पास दिखती हैं।",
         "activeModulesHintMore": "केवल अपने लिए छिपाने के लिए मॉड्यूल → नेविगेशन पर जाएँ।",
-        "permIntroMore": "अलग-अलग सदस्य भूमिका के डिफ़ॉल्ट से भिन्न हो सकते हैं। कुछ भी सेट न होने पर, हर भूमिका को पूर्ण पहुँच होती है; व्यवस्थापकों को हमेशा।"
+        "permIntroMore": "अलग-अलग सदस्य भूमिका के डिफ़ॉल्ट से भिन्न हो सकते हैं। कुछ भी सेट न होने पर, हर भूमिका को पूर्ण पहुँच होती है; व्यवस्थापकों को हमेशा।",
+        "weatherProviderMetNorway": "MET Norway (api.met.no)",
+        "weatherProviderLabel": "Weather data source",
+        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast) — good for Norway, works worldwide, no API key."
     },
     "login": {
         "tagline": "फिर से स्वागत है। आपका घर, एक ही जगह।",

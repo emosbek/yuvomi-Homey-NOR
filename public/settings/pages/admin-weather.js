@@ -22,6 +22,7 @@ function providerLabel(weatherSource) {
   const { source, provider } = weatherSource;
   if (source === 'env' && provider === 'open-meteo') return t('settings.weatherProviderOpenMeteoEnv');
   if (provider === 'open-meteo') return t('settings.weatherProviderOpenMeteo');
+  if (provider === 'met-norway') return t('settings.weatherProviderMetNorway');
   if (provider === 'openweathermap') return t('settings.weatherProviderOwm');
   return t('settings.weatherProviderNone');
 }
@@ -34,11 +35,20 @@ export function weatherSourceOf(preferences) {
   return preferences?.weather_source ?? { source: 'none', provider: null };
 }
 
-// Nur ein hier gespeicherter Open-Meteo-Standort laesst sich hier entfernen.
+const COORD_PROVIDERS = new Set(['open-meteo', 'met-norway']);
+
+// Nur ein hier gespeicherter Koordinaten-Standort laesst sich hier entfernen.
 // Dazu zaehlen auch Koordinaten ohne Anbieter, die ein frueheres "Entfernen"
 // liegen liess - der Proxy nimmt sie, also muss man sie loswerden koennen.
 export function canRemoveStoredWeather(weatherSource) {
-  return weatherSource.source === 'db' && weatherSource.provider === 'open-meteo';
+  return weatherSource.source === 'db' && COORD_PROVIDERS.has(weatherSource.provider);
+}
+
+function selectedProvider(preferences, weatherSource) {
+  if (preferences?.weather_provider === 'met-norway') return 'met-norway';
+  if (preferences?.weather_provider === 'open-meteo') return 'open-meteo';
+  if (weatherSource.provider === 'met-norway') return 'met-norway';
+  return 'open-meteo';
 }
 
 /**
@@ -48,7 +58,7 @@ export function canRemoveStoredWeather(weatherSource) {
  * wer speichert, uebersteuert die `.env`.
  */
 export function weatherSourceHtml(weatherSource) {
-  const connected = weatherSource.provider === 'open-meteo';
+  const connected = COORD_PROVIDERS.has(weatherSource.provider);
   const status = `
         <div class="settings-sync-info">
           <span class="form-label">${t('settings.weatherActiveProvider')}</span>
@@ -86,6 +96,14 @@ function renderPage(container, preferences) {
         ${weatherSourceHtml(weatherSource)}
 
         <form class="settings-form settings-form--compact" id="weather-form" novalidate autocomplete="off">
+          <div class="form-field">
+            <label class="form-label" for="weather-provider">${t('settings.weatherProviderLabel')}</label>
+            <select class="form-select" id="weather-provider" name="weather_provider">
+              <option value="open-meteo"${selectedProvider(preferences, weatherSource) === 'open-meteo' ? ' selected' : ''}>${esc(t('settings.weatherProviderOpenMeteo'))}</option>
+              <option value="met-norway"${selectedProvider(preferences, weatherSource) === 'met-norway' ? ' selected' : ''}>${esc(t('settings.weatherProviderMetNorway'))}</option>
+            </select>
+            <p class="form-hint">${t('settings.weatherProviderHint')}</p>
+          </div>
           ${weatherLocationFieldsHtml({
             scope: SCOPE,
             values: {
@@ -131,12 +149,14 @@ function bindWeatherEvents(container, user) {
     }
 
     try {
+      const providerSelect = container.querySelector('#weather-provider');
+      const provider = providerSelect?.value === 'met-norway' ? 'met-norway' : 'open-meteo';
       await savePreferences({
         weather_lat: location.lat,
         weather_lon: location.lon,
         weather_city: location.city,
         weather_units: location.units,
-        weather_provider: 'open-meteo',
+        weather_provider: provider,
         weather_auto_locate: location.auto_locate,
       });
       window.yuvomi?.showToast(t('settings.weatherSaved'), 'success');

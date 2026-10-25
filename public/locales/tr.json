@@ -2672,8 +2672,8 @@
         "weatherUnitsImperial": "İngiliz birimi (°F, mph)",
         "weatherSave": "Kaydet",
         "weatherSaved": "Hava durumu widget'ı kaydedildi.",
-        "weatherRemove": "Open-Meteo'yu devre dışı bırak",
-        "weatherRemoved": "Open-Meteo devre dışı bırakıldı.",
+        "weatherRemove": "Disable saved weather",
+        "weatherRemoved": "Saved weather location disabled.",
         "weatherRemovedEnv": "Kaydedilen konum kaldırıldı. Sunucu yapılandırmasındaki konum yeniden geçerli.",
         "weatherActiveProvider": "Aktif sağlayıcı",
         "weatherProviderOpenMeteo": "Open-Meteo",
@@ -2682,7 +2682,7 @@
         "weatherProviderNone": "Yapılandırılmamış",
         "weatherEnvLocationLabel": "Konum",
         "weatherEnvHint": "Bu değerler sunucu yapılandırmasından (.env) gelir. Burada kaydedilen bir konum önceliklidir. Kapatmak için {{vars}} girdilerini .env dosyasından kaldırın ve konteyneri yeniden başlatın.",
-        "weatherSwitchHint": "Open-Meteo kaydedildiğinde etkinleştirilecek ve OWM yoksayılacak.",
+        "weatherSwitchHint": "Saving activates the chosen source and ignores OpenWeatherMap from .env.",
         "householdWeatherOverrideHint": "Üyeler “Hava durumum” bölümünde kendi konumunu belirleyebilir; bu konumun yerine geçer.",
         "weatherLocateBtn": "Konumu tespit et",
         "weatherLocateSuccess": "Konum tespit edildi.",
@@ -3356,7 +3356,10 @@
         "permCapabilityTasksReorder": "Ailenin sıralamasını değiştir",
         "permChildRoleHint": "Yeni çocuk hesapları oluşturulurken ayrıca kendi başlangıç izinlerini alır: {{list}}. Sonra bunlar ilgili üyede görünür.",
         "activeModulesHintMore": "Bir modülü yalnızca kendinde gizlemek için Modüller → Gezinme sayfasına git.",
-        "permIntroMore": "Bireysel üyeler rol varsayılanından farklı olabilir. Ayar yapılmazsa her rol tam erişime sahiptir; yöneticiler her zaman."
+        "permIntroMore": "Bireysel üyeler rol varsayılanından farklı olabilir. Ayar yapılmazsa her rol tam erişime sahiptir; yöneticiler her zaman.",
+        "weatherProviderMetNorway": "MET Norway (api.met.no)",
+        "weatherProviderLabel": "Weather data source",
+        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast) — good for Norway, works worldwide, no API key."
     },
     "login": {
         "tagline": "Tekrar hoş geldin. Evin tek bir yerde.",

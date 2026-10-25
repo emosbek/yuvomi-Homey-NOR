@@ -205,7 +205,7 @@ function parseCountdownGraceDays(raw) {
   return Math.min(n, MAX_COUNTDOWN_GRACE_DAYS);
 }
 
-const VALID_WEATHER_PROVIDERS = ['open-meteo', 'openweathermap'];
+const VALID_WEATHER_PROVIDERS = ['open-meteo', 'met-norway', 'openweathermap'];
 const VALID_WEATHER_UNITS = ['metric', 'imperial'];
 
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;

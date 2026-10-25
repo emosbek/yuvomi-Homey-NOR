@@ -2672,8 +2672,8 @@
         "weatherUnitsImperial": "Imperialt (°F, mph)",
         "weatherSave": "Spara",
         "weatherSaved": "Väder-widget sparad.",
-        "weatherRemove": "Inaktivera Open-Meteo",
-        "weatherRemoved": "Open-Meteo inaktiverat.",
+        "weatherRemove": "Disable saved weather",
+        "weatherRemoved": "Saved weather location disabled.",
         "weatherRemovedEnv": "Sparad plats borttagen. Platsen från serverkonfigurationen gäller igen.",
         "weatherActiveProvider": "Aktiv leverantör",
         "weatherProviderOpenMeteo": "Open-Meteo",
@@ -2682,7 +2682,7 @@
         "weatherProviderNone": "Inte konfigurerat",
         "weatherEnvLocationLabel": "Plats",
         "weatherEnvHint": "Dessa värden kommer från serverkonfigurationen (.env). En plats som sparas här har företräde. För att stänga av det, ta bort {{vars}}-posterna från .env-filen och starta om containern.",
-        "weatherSwitchHint": "Open-Meteo aktiveras vid sparning och OWM ignoreras.",
+        "weatherSwitchHint": "Saving activates the chosen source and ignores OpenWeatherMap from .env.",
         "householdWeatherOverrideHint": "Medlemmar kan ange en egen plats under ”Mitt väder”, som ersätter den här.",
         "weatherLocateBtn": "Identifiera plats",
         "weatherLocateSuccess": "Plats identifierad.",
@@ -3356,7 +3356,10 @@
         "permCapabilityTasksReorder": "Ändra familjens ordning",
         "permChildRoleHint": "Nya barnkonton får dessutom egna startbehörigheter när de skapas: {{list}}. Därefter står de hos respektive medlem.",
         "activeModulesHintMore": "Vill du dölja en modul bara för dig, gå till Moduler → Navigering.",
-        "permIntroMore": "Enskilda medlemmar kan avvika från rollens standard. Utan inställning har varje roll full åtkomst; administratörer alltid."
+        "permIntroMore": "Enskilda medlemmar kan avvika från rollens standard. Utan inställning har varje roll full åtkomst; administratörer alltid.",
+        "weatherProviderMetNorway": "MET Norway (api.met.no)",
+        "weatherProviderLabel": "Weather data source",
+        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast) — good for Norway, works worldwide, no API key."
     },
     "login": {
         "tagline": "Välkommen tillbaka. Ditt hem samlat på ett ställe.",

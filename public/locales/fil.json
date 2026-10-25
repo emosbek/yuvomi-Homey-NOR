@@ -2727,8 +2727,8 @@
         "weatherUnitsImperial": "Imperyal (°F, mph)",
         "weatherSave": "I-save",
         "weatherSaved": "Na-save ang widget ng panahon.",
-        "weatherRemove": "I-disable ang Open-Meteo",
-        "weatherRemoved": "Na-disable ang Open-Meteo.",
+        "weatherRemove": "Disable saved weather",
+        "weatherRemoved": "Saved weather location disabled.",
         "weatherRemovedEnv": "Inalis ang naka-save na lokasyon. Muling ginagamit ang lokasyon mula sa configuration ng server.",
         "weatherActiveProvider": "Aktibong provider",
         "weatherProviderOpenMeteo": "Open-Meteo",
@@ -2737,7 +2737,7 @@
         "weatherProviderNone": "Hindi naka-configure",
         "weatherEnvLocationLabel": "Lokasyon",
         "weatherEnvHint": "Nagmumula ang mga value na ito sa configuration ng server (.env). Mas may priyoridad ang lokasyong ise-save dito. Para i-off ito, alisin ang mga entry na {{vars}} sa .env file at i-restart ang container.",
-        "weatherSwitchHint": "Ia-aktibo ang Open-Meteo kapag na-save at hindi papansinin ang OWM.",
+        "weatherSwitchHint": "Saving activates the chosen source and ignores OpenWeatherMap from .env.",
         "householdWeatherOverrideHint": "Maaaring magtakda ang mga miyembro ng sarili nilang lokasyon sa ilalim ng \"Ang aking panahon\", na papalit dito.",
         "weatherLocateBtn": "Tuklasin ang lokasyon",
         "weatherLocateSuccess": "Natuklasan ang lokasyon.",
@@ -3374,7 +3374,10 @@
         "permCapabilityTasksReorder": "Baguhin ang pagkakasunod-sunod ng pamilya",
         "permChildRoleHint": "Ang mga bagong account ng bata ay may sarili ring panimulang pahintulot pagkagawa: {{list}}. Pagkatapos, nakalista ang mga ito sa miyembrong iyon.",
         "activeModulesHintMore": "Para itago lang para sa iyo, pumunta sa Mga Modyul → Nabigasyon.",
-        "permIntroMore": "Maaaring magkaiba ang mga indibidwal na miyembro sa default ng papel. Kapag walang nakatakda, may buong access ang bawat papel; palaging mayroon nito ang mga administrator."
+        "permIntroMore": "Maaaring magkaiba ang mga indibidwal na miyembro sa default ng papel. Kapag walang nakatakda, may buong access ang bawat papel; palaging mayroon nito ang mga administrator.",
+        "weatherProviderMetNorway": "MET Norway (api.met.no)",
+        "weatherProviderLabel": "Weather data source",
+        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast) — good for Norway, works worldwide, no API key."
     },
     "login": {
         "tagline": "Maligayang pagbabalik. Ang iyong tahanan sa iisang lugar.",

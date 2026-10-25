@@ -86,6 +86,7 @@ Betreiber daraus resultieren.
 | Dienst | Code-Stelle | Standard aktiv? | Drittland? | AVV nötig? |
 |---|---|---|---|---|
 | Open-Meteo | `server/routes/weather.js` | ja (Default) | CH — Angemessenheitsbeschluss | nein (siehe 2.1) |
+| MET Norway | `server/routes/weather.js` | nur wenn in den Einstellungen gewählt | NO — EWR/GDPR | nein (Koordinaten + User-Agent; siehe Locationforecast ToS) |
 | OpenWeatherMap | `server/routes/weather.js` | nur wenn `OPENWEATHER_API_KEY` gesetzt | UK — Angemessenheitsbeschluss | empfohlen (siehe 2.2) |
 | CalDAV/CardDAV-Server | `server/services/caldav-sync.js`, `server/services/cardav-sync.js` | nur wenn Nutzer einen Sync konfiguriert | abhängig vom Provider | ja, bei kommerziellen Anbietern (siehe 2.3) |
 | Google-Kalender-Sync (REST-API) | `server/services/google-calendar.js` | nur nach OAuth-Verbindung | USA/Google; DPF-Status prüfen | ja (siehe 2.3) |

@@ -2672,8 +2672,8 @@
         "weatherUnitsImperial": "Imperiális (°F, mph)",
         "weatherSave": "Mentés",
         "weatherSaved": "Időjárás widget mentve.",
-        "weatherRemove": "Open-Meteo letiltása",
-        "weatherRemoved": "Open-Meteo letiltva.",
+        "weatherRemove": "Disable saved weather",
+        "weatherRemoved": "Saved weather location disabled.",
         "weatherRemovedEnv": "A mentett helyszín eltávolítva. Ismét a szerverkonfiguráció helyszíne érvényes.",
         "weatherActiveProvider": "Aktív szolgáltató",
         "weatherProviderOpenMeteo": "Open-Meteo",
@@ -2682,7 +2682,7 @@
         "weatherProviderNone": "Nincs konfigurálva",
         "weatherEnvLocationLabel": "Helyszín",
         "weatherEnvHint": "Ezek az értékek a szerverkonfigurációból (.env) származnak. Az itt mentett helyszín elsőbbséget élvez. A kikapcsoláshoz távolítsa el a {{vars}} bejegyzéseket a .env fájlból, és indítsa újra a konténert.",
-        "weatherSwitchHint": "Open-Meteo a mentéskor aktiválódik, és az OWM figyelmen kívül lesz hagyva.",
+        "weatherSwitchHint": "Saving activates the chosen source and ignores OpenWeatherMap from .env.",
         "householdWeatherOverrideHint": "A tagok az „Időjárás“ oldalon saját helyet adhatnak meg, amely ezt felülírja.",
         "weatherLocateBtn": "Helyzet érzékelése",
         "weatherLocateSuccess": "Helyzet érzékelve.",
@@ -3356,7 +3356,10 @@
         "permCapabilityTasksReorder": "A család sorrendjének módosítása",
         "permChildRoleHint": "Az új gyerekfiókok létrehozáskor saját kezdő jogosultságokat is kapnak: {{list}}. Ezek utána az adott tagnál láthatók.",
         "activeModulesHintMore": "Ha csak magadnál rejtenéd el, nézd meg a Modulok → Navigáció oldalt.",
-        "permIntroMore": "Az egyes tagok eltérhetnek a szerep alapértelmezésétől. Beállítás nélkül minden szerep teljes hozzáférést kap; a rendszergazdák mindig."
+        "permIntroMore": "Az egyes tagok eltérhetnek a szerep alapértelmezésétől. Beállítás nélkül minden szerep teljes hozzáférést kap; a rendszergazdák mindig.",
+        "weatherProviderMetNorway": "MET Norway (api.met.no)",
+        "weatherProviderLabel": "Weather data source",
+        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast) — good for Norway, works worldwide, no API key."
     },
     "login": {
         "tagline": "Üdv újra! Az otthon ügyei egy helyen.",

@@ -2672,8 +2672,8 @@
         "weatherUnitsImperial": "Imperiaal (°F, mph)",
         "weatherSave": "Opslaan",
         "weatherSaved": "Weer-widget opgeslagen.",
-        "weatherRemove": "Open-Meteo uitschakelen",
-        "weatherRemoved": "Open-Meteo uitgeschakeld.",
+        "weatherRemove": "Disable saved weather",
+        "weatherRemoved": "Saved weather location disabled.",
         "weatherRemovedEnv": "Opgeslagen locatie verwijderd. De locatie uit de serverconfiguratie geldt weer.",
         "weatherActiveProvider": "Actieve provider",
         "weatherProviderOpenMeteo": "Open-Meteo",
@@ -2682,7 +2682,7 @@
         "weatherProviderNone": "Niet geconfigureerd",
         "weatherEnvLocationLabel": "Locatie",
         "weatherEnvHint": "Deze waarden komen uit de serverconfiguratie (.env). Een hier opgeslagen locatie heeft voorrang. Om het uit te schakelen, verwijder je de {{vars}}-regels uit het .env-bestand en start je de container opnieuw.",
-        "weatherSwitchHint": "Open-Meteo wordt geactiveerd bij opslaan en OWM genegeerd.",
+        "weatherSwitchHint": "Saving activates the chosen source and ignores OpenWeatherMap from .env.",
         "householdWeatherOverrideHint": "Leden kunnen bij “Mijn weer” een eigen locatie instellen, die deze vervangt.",
         "weatherLocateBtn": "Locatie detecteren",
         "weatherLocateSuccess": "Locatie gedetecteerd.",
@@ -3356,7 +3356,10 @@
         "permCapabilityTasksReorder": "Volgorde van het gezin wijzigen",
         "permChildRoleHint": "Nieuwe kinderaccounts krijgen bij het aanmaken ook eigen startrechten: {{list}}. Daarna staan ze bij het betreffende lid.",
         "activeModulesHintMore": "Wil je een module alleen voor jezelf verbergen, ga dan naar Modules → Navigatie.",
-        "permIntroMore": "Individuele leden kunnen afwijken van de standaard van de rol. Zonder instelling heeft elke rol volledige toegang; beheerders altijd."
+        "permIntroMore": "Individuele leden kunnen afwijken van de standaard van de rol. Zonder instelling heeft elke rol volledige toegang; beheerders altijd.",
+        "weatherProviderMetNorway": "MET Norway (api.met.no)",
+        "weatherProviderLabel": "Weather data source",
+        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast) — good for Norway, works worldwide, no API key."
     },
     "login": {
         "tagline": "Welkom terug. Je huishouden op één plek.",

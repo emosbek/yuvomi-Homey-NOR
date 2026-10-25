@@ -2727,8 +2727,8 @@
         "weatherUnitsImperial": "Imperial (°F, mph)",
         "weatherSave": "Speichern",
         "weatherSaved": "Wetter-Widget gespeichert.",
-        "weatherRemove": "Open-Meteo deaktivieren",
-        "weatherRemoved": "Open-Meteo deaktiviert.",
+        "weatherRemove": "Gespeichertes Wetter deaktivieren",
+        "weatherRemoved": "Gespeicherter Wetterstandort deaktiviert.",
         "weatherRemovedEnv": "Gespeicherter Standort entfernt. Es gilt wieder der Standort aus der Serverkonfiguration.",
         "weatherActiveProvider": "Aktiver Anbieter",
         "weatherProviderOpenMeteo": "Open-Meteo",
@@ -2737,7 +2737,7 @@
         "weatherProviderNone": "Nicht konfiguriert",
         "weatherEnvLocationLabel": "Standort",
         "weatherEnvHint": "Diese Werte stammen aus der Serverkonfiguration (.env). Ein hier gespeicherter Standort hat Vorrang. Zum Abschalten die {{vars}}-Einträge aus der .env entfernen und den Container neu starten.",
-        "weatherSwitchHint": "Open-Meteo wird beim Speichern automatisch aktiviert und OWM ignoriert.",
+        "weatherSwitchHint": "Speichern aktiviert die gewählte Quelle und ignoriert OpenWeatherMap aus der .env.",
         "householdWeatherOverrideHint": "Mitglieder können unter „Mein Wetter“ einen eigenen Standort hinterlegen, der diesen ersetzt.",
         "weatherLocateBtn": "Standort ermitteln",
         "weatherLocateSuccess": "Standort erfolgreich ermittelt.",
@@ -3374,7 +3374,10 @@
         "permCapabilityTasksReorder": "Reihenfolge der Familie ändern",
         "permChildRoleHint": "Neue Kinderkonten bekommen beim Anlegen zusätzlich eigene Startrechte: {{list}}. Danach stehen sie beim jeweiligen Mitglied.",
         "activeModulesHintMore": "Wer ein Modul nur für sich aus der Navigation nehmen will, tut das unter Module → Navigation.",
-        "permIntroMore": "Einzelne Mitglieder können vom Rollen-Standard abweichen. Ohne Einstellung hat jede Rolle vollen Zugriff; Administratoren immer."
+        "permIntroMore": "Einzelne Mitglieder können vom Rollen-Standard abweichen. Ohne Einstellung hat jede Rolle vollen Zugriff; Administratoren immer.",
+        "weatherProviderMetNorway": "MET Norway (api.met.no)",
+        "weatherProviderLabel": "Wetterdatenquelle",
+        "weatherProviderHint": "Open-Meteo ist der weltweite Standard. MET Norway nutzt die Locationforecast des Norwegischen Meteorologischen Instituts — gut für Norwegen, weltweit nutzbar, kein API-Schlüssel."
     },
     "login": {
         "tagline": "Willkommen zurück. Dein Zuhause an einem Ort.",

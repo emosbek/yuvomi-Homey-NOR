@@ -35,6 +35,10 @@ export function resolveWeatherSource(stored = {}, env = process.env) {
   if (provider === 'open-meteo' && lat && lon) {
     return { source: 'db', provider: 'open-meteo', lat, lon, city, units };
   }
+  // MET Norway (api.met.no / data.met.no): ebenfalls Koordinaten, kein API-Key.
+  if (provider === 'met-norway' && lat && lon) {
+    return { source: 'db', provider: 'met-norway', lat, lon, city, units };
+  }
   if (provider === 'openweathermap' && owmKey) {
     return {
       source: 'db',
@@ -47,6 +51,7 @@ export function resolveWeatherSource(stored = {}, env = process.env) {
   }
   // Ohne Anbieter reichen Koordinaten in der Datenbank - gedacht fuer den
   // Standort je Mitglied (v0.77.5), greift aber ebenso fuer die des Haushalts.
+  // Default bleibt Open-Meteo; MET muss bewusst gewaehlt werden.
   if (!provider && lat && lon) {
     return { source: 'db', provider: 'open-meteo', lat, lon, city, units };
   }
