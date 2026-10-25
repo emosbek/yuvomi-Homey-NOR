@@ -441,6 +441,16 @@
         "nutritionEntries": "{{count}} رکورد امروز",
         "nutritionEntries_one": "{{count}} رکورد امروز",
         "weatherUnavailable": "آب‌وهوا در حال حاضر در دسترس نیست",
+        "weatherHourlyChart": "دما، بارش و باد ساعتی",
+        "weatherHourlyShow": "نمایش پیش‌بینی ساعتی",
+        "weatherHourlyHide": "پنهان کردن پیش‌بینی ساعتی",
+        "weatherHourlyTemp": "دما",
+        "weatherHourlyPrecip": "بارش",
+        "weatherHourlyPrecipMax": "حداکثر بارش",
+        "weatherHourlyWind": "باد",
+        "weatherHourlyGust": "تندباد",
+        "weatherHourlyPrev": "روز قبل",
+        "weatherHourlyNext": "روز بعد",
         "wallScreensaverNone": "محافظ صفحه در دسترس نیست.",
         "wallScreensaverStart": "محافظ صفحه"
     },
@@ -3377,7 +3387,7 @@
         "permIntroMore": "هر عضو می‌تواند با پیش‌فرض نقش متفاوت باشد. بدون تنظیم، هر نقش دسترسی کامل دارد؛ مدیران همیشه.",
         "weatherProviderMetNorway": "MET Norway (api.met.no)",
         "weatherProviderLabel": "Weather data source",
-        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast) — good for Norway, works worldwide, no API key."
+        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast), good for Norway, works worldwide, no API key."
     },
     "login": {
         "tagline": "دوباره خوش آمدید. خانهٔ شما در یک جا.",

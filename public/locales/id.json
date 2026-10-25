@@ -441,6 +441,16 @@
         "nutritionEntries": "{{count}} catatan hari ini",
         "nutritionEntries_one": "{{count}} catatan hari ini",
         "weatherUnavailable": "Cuaca sedang tidak tersedia",
+        "weatherHourlyChart": "Suhu, curah hujan, dan angin per jam",
+        "weatherHourlyShow": "Tampilkan prakiraan per jam",
+        "weatherHourlyHide": "Sembunyikan prakiraan per jam",
+        "weatherHourlyTemp": "Suhu",
+        "weatherHourlyPrecip": "Curah hujan",
+        "weatherHourlyPrecipMax": "Curah hujan maks.",
+        "weatherHourlyWind": "Angin",
+        "weatherHourlyGust": "Hembusan",
+        "weatherHourlyPrev": "Hari sebelumnya",
+        "weatherHourlyNext": "Hari berikutnya",
         "wallScreensaverNone": "Screensaver tidak tersedia.",
         "wallScreensaverStart": "Screensaver"
     },
@@ -3377,7 +3387,7 @@
         "permIntroMore": "Anggota individu dapat berbeda dari default peran. Tanpa pengaturan, setiap peran memiliki akses penuh; administrator selalu.",
         "weatherProviderMetNorway": "MET Norway (api.met.no)",
         "weatherProviderLabel": "Weather data source",
-        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast) — good for Norway, works worldwide, no API key."
+        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast), good for Norway, works worldwide, no API key."
     },
     "login": {
         "tagline": "Selamat datang kembali. Rumah Anda dalam satu tempat.",

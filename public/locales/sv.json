@@ -423,6 +423,16 @@
         "nutritionEntries": "{{count}} poster idag",
         "nutritionEntries_one": "{{count}} post idag",
         "weatherUnavailable": "Vädret är inte tillgängligt just nu",
+        "weatherHourlyChart": "Timvis temperatur, nederbörd och vind",
+        "weatherHourlyShow": "Visa timprognos",
+        "weatherHourlyHide": "Dölj timprognos",
+        "weatherHourlyTemp": "Temperatur",
+        "weatherHourlyPrecip": "Nederbörd",
+        "weatherHourlyPrecipMax": "Max nederbörd",
+        "weatherHourlyWind": "Vind",
+        "weatherHourlyGust": "Byar",
+        "weatherHourlyPrev": "Föregående dag",
+        "weatherHourlyNext": "Nästa dag",
         "wallScreensaverNone": "Skärmsläckare ej tillgänglig.",
         "wallScreensaverStart": "Skärmsläckare"
     },
@@ -3359,7 +3369,7 @@
         "permIntroMore": "Enskilda medlemmar kan avvika från rollens standard. Utan inställning har varje roll full åtkomst; administratörer alltid.",
         "weatherProviderMetNorway": "MET Norway (api.met.no)",
         "weatherProviderLabel": "Weather data source",
-        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast) — good for Norway, works worldwide, no API key."
+        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast), good for Norway, works worldwide, no API key."
     },
     "login": {
         "tagline": "Välkommen tillbaka. Ditt hem samlat på ett ställe.",

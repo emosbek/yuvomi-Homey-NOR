@@ -543,6 +543,16 @@
         "nutritionEntries_two": "سجلان اليوم",
         "nutritionEntries_many": "{{count}} سجلًا اليوم",
         "weatherUnavailable": "الطقس غير متاح حاليًا",
+        "weatherHourlyChart": "درجة الحرارة والهطول والرياح كل ساعة",
+        "weatherHourlyShow": "إظهار التوقعات الساعية",
+        "weatherHourlyHide": "إخفاء التوقعات الساعية",
+        "weatherHourlyTemp": "درجة الحرارة",
+        "weatherHourlyPrecip": "الهطول",
+        "weatherHourlyPrecipMax": "أقصى هطول",
+        "weatherHourlyWind": "الرياح",
+        "weatherHourlyGust": "هبات",
+        "weatherHourlyPrev": "اليوم السابق",
+        "weatherHourlyNext": "اليوم التالي",
         "wallScreensaverNone": "شاشة التوقف غير متاحة.",
         "wallScreensaverStart": "شاشة التوقف"
     },
@@ -3675,7 +3685,7 @@
         "permIntroMore": "يمكن أن يختلف الأعضاء الأفراد عن الإعداد الافتراضي للدور. بدون أي إعداد، يتمتع كل دور بوصول كامل؛ والمشرفون دائمًا.",
         "weatherProviderMetNorway": "MET Norway (api.met.no)",
         "weatherProviderLabel": "Weather data source",
-        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast) — good for Norway, works worldwide, no API key."
+        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast), good for Norway, works worldwide, no API key."
     },
     "login": {
         "tagline": "مرحبًا بعودتك. منزلك في مكان واحد.",

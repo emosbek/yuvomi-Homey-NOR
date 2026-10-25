@@ -423,6 +423,16 @@
         "nutritionEntries": "आज {{count}} प्रविष्टियाँ",
         "nutritionEntries_one": "आज {{count}} प्रविष्टि",
         "weatherUnavailable": "मौसम अभी उपलब्ध नहीं है",
+        "weatherHourlyChart": "प्रति घंटा तापमान, वर्षा और हवा",
+        "weatherHourlyShow": "प्रति घंटा पूर्वानुमान दिखाएँ",
+        "weatherHourlyHide": "प्रति घंटा पूर्वानुमान छिपाएँ",
+        "weatherHourlyTemp": "तापमान",
+        "weatherHourlyPrecip": "वर्षा",
+        "weatherHourlyPrecipMax": "अधिकतम वर्षा",
+        "weatherHourlyWind": "हवा",
+        "weatherHourlyGust": "झोंके",
+        "weatherHourlyPrev": "पिछला दिन",
+        "weatherHourlyNext": "अगला दिन",
         "wallScreensaverNone": "स्क्रीनसेवर उपलब्ध नहीं है।",
         "wallScreensaverStart": "स्क्रीनसेवर"
     },
@@ -3359,7 +3369,7 @@
         "permIntroMore": "अलग-अलग सदस्य भूमिका के डिफ़ॉल्ट से भिन्न हो सकते हैं। कुछ भी सेट न होने पर, हर भूमिका को पूर्ण पहुँच होती है; व्यवस्थापकों को हमेशा।",
         "weatherProviderMetNorway": "MET Norway (api.met.no)",
         "weatherProviderLabel": "Weather data source",
-        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast) — good for Norway, works worldwide, no API key."
+        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast), good for Norway, works worldwide, no API key."
     },
     "login": {
         "tagline": "फिर से स्वागत है। आपका घर, एक ही जगह।",

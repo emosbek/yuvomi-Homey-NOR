@@ -423,6 +423,16 @@
         "nutritionEntries": "{{count}} καταχωρίσεις σήμερα",
         "nutritionEntries_one": "{{count}} καταχώριση σήμερα",
         "weatherUnavailable": "Ο καιρός δεν είναι διαθέσιμος αυτή τη στιγμή",
+        "weatherHourlyChart": "Ωριαία θερμοκρασία, υετός και άνεμος",
+        "weatherHourlyShow": "Εμφάνιση ωριαίας πρόγνωσης",
+        "weatherHourlyHide": "Απόκρυψη ωριαίας πρόγνωσης",
+        "weatherHourlyTemp": "Θερμοκρασία",
+        "weatherHourlyPrecip": "Υετός",
+        "weatherHourlyPrecipMax": "Μέγ. υετός",
+        "weatherHourlyWind": "Άνεμος",
+        "weatherHourlyGust": "Ριπές",
+        "weatherHourlyPrev": "Προηγούμενη ημέρα",
+        "weatherHourlyNext": "Επόμενη ημέρα",
         "wallScreensaverNone": "Η προφύλαξη οθόνης δεν είναι διαθέσιμη.",
         "wallScreensaverStart": "Προφύλαξη οθόνης"
     },
@@ -3359,7 +3369,7 @@
         "permIntroMore": "Τα μεμονωμένα μέλη μπορούν να διαφέρουν από την προεπιλογή του ρόλου. Χωρίς ρύθμιση, κάθε ρόλος έχει πλήρη πρόσβαση· οι διαχειριστές πάντα.",
         "weatherProviderMetNorway": "MET Norway (api.met.no)",
         "weatherProviderLabel": "Weather data source",
-        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast) — good for Norway, works worldwide, no API key."
+        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast), good for Norway, works worldwide, no API key."
     },
     "login": {
         "tagline": "Καλώς ήρθατε ξανά. Το σπίτι σας σε ένα μέρος.",

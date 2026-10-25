@@ -75,9 +75,24 @@ import { installPopoverMenus, popoverMenuHtml } from '/utils/popover-menu.js';
 import { nextRewardGoal } from '/utils/reward-goal.js';
 import { reloadAfterSave } from '/utils/reload-after-save.js';
 import { shiftTypeLabel } from '/utils/shift-label.js';
+import {
+  drawableHourlyDates,
+  hourlyForDate,
+  nextDateKey,
+  weatherHourlyChartMarkup,
+} from '/utils/weather-hourly-chart.js';
 
 // Hält den AbortController des aktuellen FAB-Listeners - wird bei jedem render() erneuert.
 let _fabController = null;
+
+/** Ob die Stundenkurve auf dem Wetter-Widget der Uebersicht offen ist (Session). */
+let _weatherHourlyExpanded = false;
+/** Gewaehlter Tag (YYYY-MM-DD) in der aufgeklappten Stundenkurve. */
+let _weatherHourlyDateKey = null;
+/** Letzte Wetter-Payload mit `hourly` - fuer Auf-/Zuklappen ohne Neuabruf. */
+let _weatherHourlyPayload = null;
+/** onUpdated des Wetter-Refresh - ueberlebt Remount beim Aufklappen. */
+let _weatherRefreshOnUpdated = null;
 
 /* DIE WAND HAELT DEN EINEN HISTORY-MARKER (#1559). Zurueck beendete sie nicht:
  * es gab keinen Eintrag und keinen `popstate`-Handler, in der installierten App
@@ -5441,7 +5456,7 @@ function renderDashboardLayout(cfg, data, weather, currency, { editing = false, 
     shopping: () => renderShoppingTile(data),
     // Hier ankommen heisst eingerichtet (`isWidgetModuleEnabled`); fehlt das
     // Wetter trotzdem, sagt die Kachel es, statt zu verschwinden.
-    weather: () => (weather ? renderWeatherWidget(weather) : renderWeatherUnavailable()),
+    weather: (size) => (weather ? renderWeatherWidget(weather, size) : renderWeatherUnavailable()),
     clock: () => renderClockWidget(),
     quicklinks: () => renderQuickLinks(data.quicklinks ?? []),
     // Die Kachelreihe braucht als einziges Widget zu wissen, wer sonst noch
@@ -5930,49 +5945,162 @@ function weatherSpanModel(forecast) {
   };
 }
 
-function renderWeatherWidget(weather) {
+/** Ob eine Stundenliste eine zeichentbare Kurve hergibt (mind. zwei Temps). */
+function weatherHourlyDrawable(points) {
+  if (!Array.isArray(points) || points.length < 2) return false;
+  return points.filter((p) => Number.isFinite(Number(p?.temp))).length >= 2;
+}
+
+function weatherHourlyDayKeys(weather) {
+  return drawableHourlyDates(weather?.hourly);
+}
+
+/** Aktueller Tag der Stundenkurve; faellt auf heute bzw. ersten nutzbaren Tag. */
+function resolveWeatherHourlyDateKey(weather) {
+  const keys = weatherHourlyDayKeys(weather);
+  if (!keys.length) return null;
+  if (_weatherHourlyDateKey && keys.includes(_weatherHourlyDateKey)) return _weatherHourlyDateKey;
+  const today = weather?.today?.date;
+  _weatherHourlyDateKey = (today && keys.includes(today)) ? today : keys[0];
+  return _weatherHourlyDateKey;
+}
+
+function weatherHourlyNavLabel(weather, dateKey) {
+  if (weatherIsToday(weather, dateKey)) return t('common.today');
+  const tomorrow = nextDateKey(weather?.today?.date);
+  if (dateKey && dateKey === tomorrow) return t('common.tomorrow');
+  try {
+    return new Intl.DateTimeFormat(getLocale(), { weekday: 'short', day: 'numeric', month: 'short' })
+      .format(new Date(`${dateKey}T12:00:00`));
+  } catch {
+    return dateKey;
+  }
+}
+
+function weatherHourlyChartOpts(units) {
+  return {
+    units: units === 'imperial' ? 'imperial' : 'metric',
+    tempUnit: units === 'imperial' ? '°F' : '°C',
+    windUnit: units === 'imperial' ? 'mph' : 'km/h',
+    precipUnit: units === 'imperial' ? 'in' : 'mm',
+    locale: getLocale(),
+    labels: {
+      temp: t('dashboard.weatherHourlyTemp'),
+      precip: t('dashboard.weatherHourlyPrecip'),
+      precipMax: t('dashboard.weatherHourlyPrecipMax'),
+      wind: t('dashboard.weatherHourlyWind'),
+      gust: t('dashboard.weatherHourlyGust'),
+    },
+  };
+}
+
+/**
+ * Ein Tag der Stundenkurve (Temp+Nedbør / Vind) mit Vor/Zurueck zwischen Tagen.
+ */
+function renderWeatherHourlySection(weather) {
+  const keys = weatherHourlyDayKeys(weather);
+  const dateKey = resolveWeatherHourlyDateKey(weather);
+  if (!dateKey) return '';
+  const points = hourlyForDate(weather.hourly, dateKey);
+  if (!weatherHourlyDrawable(points)) return '';
+  const chart = weatherHourlyChartMarkup(points, weatherHourlyChartOpts(weather.units));
+  if (!chart) return '';
+
+  const idx = keys.indexOf(dateKey);
+  const canPrev = idx > 0;
+  const canNext = idx >= 0 && idx < keys.length - 1;
+  const nav = keys.length > 1
+    ? `<div class="weather-hourly__nav" data-weather-hourly-nav>
+        <button type="button" class="btn btn--secondary btn--icon weather-hourly__step"
+                data-weather-hourly-step="-1"${canPrev ? '' : ' disabled'}
+                aria-label="${esc(t('dashboard.weatherHourlyPrev'))}">
+          <i data-lucide="chevron-left" class="icon-md" aria-hidden="true"></i>
+        </button>
+        <span class="weather-hourly__nav-label" data-weather-hourly-label>${esc(weatherHourlyNavLabel(weather, dateKey))}</span>
+        <button type="button" class="btn btn--secondary btn--icon weather-hourly__step"
+                data-weather-hourly-step="1"${canNext ? '' : ' disabled'}
+                aria-label="${esc(t('dashboard.weatherHourlyNext'))}">
+          <i data-lucide="chevron-right" class="icon-md" aria-hidden="true"></i>
+        </button>
+      </div>`
+    : `<div class="weather-hourly__nav weather-hourly__nav--solo">
+        <span class="weather-hourly__nav-label">${esc(weatherHourlyNavLabel(weather, dateKey))}</span>
+      </div>`;
+
+  return `
+    <div class="weather-hourly" data-weather-hourly data-weather-hourly-date="${esc(dateKey)}">
+      ${nav}
+      <div class="weather-hourly__chart" data-weather-hourly-chart role="img" aria-label="${esc(t('dashboard.weatherHourlyChart'))}">
+        ${chart}
+      </div>
+    </div>`;
+}
+
+function weatherWidgetSizeOf(wrapper) {
+  return [...(wrapper?.classList ?? [])]
+    .find((c) => c.startsWith('widget-size--'))
+    ?.slice('widget-size--'.length) ?? '1x1';
+}
+
+function renderWeatherWidget(weather, size = '1x1') {
   if (!weather) return '';
 
   const { city, current, forecast, units } = weather;
+  _weatherHourlyPayload = weather;
 
   const unitSymbol = weatherUnitSymbol(units);
   const windUnit   = units === 'imperial' ? 'mph' : 'km/h';
 
   const descText = (desc) => weatherDescText(weather, desc);
-  const iconHtml = (icon, cls, size, desc) => weatherIconHtml(weather, icon, cls, size, desc);
+  const iconHtml = (icon, cls, iconSize, desc) => weatherIconHtml(weather, icon, cls, iconSize, desc);
+
+  const canExpand = weatherHourlyDayKeys(weather).length > 0;
+  const expanded = canExpand && _weatherHourlyExpanded;
+  const hourlyHtml = expanded ? renderWeatherHourlySection(weather) : '';
+  const showHourly = Boolean(hourlyHtml);
 
   const spanOf = weatherSpanModel(forecast);
 
-  const forecastHtml = forecast.map((d, i) => {
-    const label = weatherDayLabel(weather, d.date);
-    const extraCls = i >= 3 ? ' weather-forecast__day--extended' : '';
-    // Der Balken trägt das Band der HÖCHSTtemperatur: sie ist die Zahl, nach
-    // der ein Tag eingeschätzt wird ("wird es warm?"), und sie steht daneben.
-    const band = weatherTempBand(d.temp_max, units);
-    const span = spanOf?.(d);
-    const spanHtml = span
-      ? `<div class="weather-forecast__span"${band ? ` data-weather-band="${band}"` : ''}
-              style="--span-from:${span.from.toFixed(4)};--span-to:${span.to.toFixed(4)}" aria-hidden="true"></div>`
-      : '';
-    return `
-      <div class="weather-forecast__day${extraCls}">
-        <div class="weather-forecast__label${weatherIsToday(weather, d.date) ? ' weather-forecast__label--today' : ''}">${esc(label)}</div>
-        ${iconHtml(d.icon, 'weather-forecast__icon', 32, descText(d.desc))}
-        <div class="weather-forecast__temps">
-          <span class="weather-forecast__high">${d.temp_max}°</span>
-          <span class="weather-forecast__low">${d.temp_min}°</span>
-        </div>
-        ${spanHtml}
-      </div>`;
-  }).join('');
+  const forecastHtml = (!showHourly && forecast?.length)
+    ? forecast.map((d, i) => {
+      const label = weatherDayLabel(weather, d.date);
+      const extraCls = i >= 3 ? ' weather-forecast__day--extended' : '';
+      // Der Balken trägt das Band der HÖCHSTtemperatur: sie ist die Zahl, nach
+      // der ein Tag eingeschätzt wird ("wird es warm?"), und sie steht daneben.
+      const band = weatherTempBand(d.temp_max, units);
+      const span = spanOf?.(d);
+      const spanHtml = span
+        ? `<div class="weather-forecast__span"${band ? ` data-weather-band="${band}"` : ''}
+                style="--span-from:${span.from.toFixed(4)};--span-to:${span.to.toFixed(4)}" aria-hidden="true"></div>`
+        : '';
+      return `
+        <div class="weather-forecast__day${extraCls}">
+          <div class="weather-forecast__label${weatherIsToday(weather, d.date) ? ' weather-forecast__label--today' : ''}">${esc(label)}</div>
+          ${iconHtml(d.icon, 'weather-forecast__icon', 32, descText(d.desc))}
+          <div class="weather-forecast__temps">
+            <span class="weather-forecast__high">${d.temp_max}°</span>
+            <span class="weather-forecast__low">${d.temp_min}°</span>
+          </div>
+          ${spanHtml}
+        </div>`;
+    }).join('')
+    : '';
+
+  const expandCls = canExpand ? ' weather-widget--expandable' : '';
+  const hourlyCls = showHourly ? ' weather-widget--hourly' : '';
+  // Hit-Target ist __inner (nicht die Karte): Refresh und Kopf bleiben eigene
+  // Bedienelemente, ohne role=button in role=button zu nesten.
+  const expandAttrs = canExpand
+    ? ` data-weather-expand tabindex="0" role="button" aria-expanded="${expanded ? 'true' : 'false'}" aria-label="${esc(expanded ? t('dashboard.weatherHourlyHide') : t('dashboard.weatherHourlyShow'))}"`
+    : '';
 
   return `
-    <div class="widget widget--weather weather-widget" id="weather-widget"${weatherToneAttr(current.icon)}${weatherMotionAttr(current.icon)}>
+    <div class="widget widget--weather weather-widget${expandCls}${hourlyCls}" id="weather-widget"${weatherToneAttr(current.icon)}${weatherMotionAttr(current.icon)}>
       ${widgetHeader('weather', t('dashboard.weather'), null, null, null, 'dashboard')}
       <button class="weather-widget__refresh" id="weather-refresh-btn" aria-label="${t('dashboard.weatherRefresh')}" title="${t('dashboard.weatherRefreshTitle')}">
         <i data-lucide="refresh-cw" class="icon-md" aria-hidden="true"></i>
       </button>
-      <div class="weather-widget__inner">
+      <div class="weather-widget__inner"${expandAttrs}>
         <div class="weather-widget__main">
           <div class="weather-widget__left">
             <div class="weather-widget__temp">${esc(current.temp)}${unitSymbol}</div>
@@ -5985,7 +6113,7 @@ function renderWeatherWidget(weather) {
           </div>
           <span class="weather-widget__glyph">${iconHtml(current.icon, 'weather-widget__icon', 80, descText(current.desc))}</span>
         </div>
-        ${forecast.length ? `<div class="weather-forecast">${forecastHtml}</div>` : ''}
+        ${hourlyHtml || (forecastHtml ? `<div class="weather-forecast">${forecastHtml}</div>` : '')}
       </div>
     </div>`;
 }
@@ -6620,15 +6748,20 @@ function rebuildWall(container, shell, { data, weather, failed, updatedAt, reren
 }
 
 /**
- * Wetter mit Vorhersage - dieselben Bausteine wie Karte und Masthead-Zeile,
- * ohne den Aktualisieren-Knopf: den drueckt am Wandtablet niemand, und ein
- * Bedienelement in einer reinen Anzeige waere ein falsches Versprechen.
+ * Wetter an der Wand: Jetzt + Stundenkurve (wenn hourly da), sonst die
+ * 4-Tage-Leiste. Kein Aktualisieren-Knopf - den tippt am Wandtablet niemand.
+ * Tagwahl Vor/Zurueck bleibt: das ist dieselbe Auskunft wie auf der Karte,
+ * nur dauerhaft sichtbar statt hinter einem Aufklappen.
  */
 function renderWallWeather(weather) {
   if (!weather?.current) return '';
+  _weatherHourlyPayload = weather;
   const { city, current, forecast, units } = weather;
   const desc = weatherDescText(weather, current.desc);
-  const days = (Array.isArray(forecast) ? forecast : []).slice(0, 4).map((d) => {
+  const hourlyHtml = weatherHourlyDayKeys(weather).length
+    ? renderWeatherHourlySection(weather)
+    : '';
+  const days = (!hourlyHtml && Array.isArray(forecast) ? forecast : []).slice(0, 4).map((d) => {
     const label = weatherDayLabel(weather, d.date);
     return `
       <li class="wall-weather__day"${weatherToneAttr(d.icon)}>
@@ -6642,7 +6775,7 @@ function renderWallWeather(weather) {
   }).join('');
 
   return `
-    <section class="wall__weather" aria-labelledby="wall-weather-title"${weatherToneAttr(current.icon)}${weatherMotionAttr(current.icon)}>
+    <section class="wall__weather${hourlyHtml ? ' wall__weather--hourly' : ''}" aria-labelledby="wall-weather-title"${weatherToneAttr(current.icon)}${weatherMotionAttr(current.icon)}>
       <h2 class="wall__section-title" id="wall-weather-title">${esc(t('dashboard.weather'))}</h2>
       <div class="wall-weather__now">
         ${weatherIconHtml(weather, current.icon, 'wall-weather__icon', 64, desc)}
@@ -6652,7 +6785,7 @@ function renderWallWeather(weather) {
           <span class="wall-weather__desc">${esc(desc)}${city ? ` · ${esc(city)}` : ''}</span>
         </span>
       </div>
-      ${days ? `<ol class="wall-weather__forecast">${days}</ol>` : ''}
+      ${hourlyHtml || (days ? `<ol class="wall-weather__forecast">${days}</ol>` : '')}
     </section>`;
 }
 
@@ -6768,6 +6901,9 @@ function wireWallSurface(container, rerender, signal) {
   signal.addEventListener('abort', () => clearTimeout(awakeTimer));
 
   wireWallTimer(wall, rerender, signal, { announce: announceDashboard });
+  wireWeatherHourlyNav(container, signal, {
+    remount: () => remountWallWeather(container, signal),
+  });
 
   wall.querySelector('#wall-screensaver-start')?.addEventListener('click', async () => {
     const { preview } = await import('/components/photo-screensaver.js');
@@ -8356,6 +8492,8 @@ export async function render(container, { user, signal: routeSignal = null } = {
       weather = updatedWeather;
       rebuildDashboard(cfg);
     }, signal);
+    wireWeatherExpand(container, signal);
+    wireWeatherHourlyNav(container, signal);
     container.querySelector('#dashboard-search')?.addEventListener('click', () => {
       window.yuvomi?.openSearch?.();
     }, { signal: signal });
@@ -8706,7 +8844,95 @@ export const __test = {
 // ein ueberholter Aufbau haengte seinen Klick damit an den Controller des
 // neueren, und der Rauchtest im Browser fand den Zugriff als ReferenceError,
 // nachdem das Feld aus render() verschwunden war. Der Aufrufer reicht es herein.
+/**
+ * Klick auf die Wetterkarte klappt die ~48h-Kurve auf/zu. Interaktive Kinder
+ * (Aktualisieren, Anpassen-Kontrollen, Links) bleiben ausgenommen.
+ */
+function remountWeatherWidget(container, weather, signal, onUpdated = _weatherRefreshOnUpdated) {
+  const wWidget = container.querySelector('#weather-widget');
+  if (!wWidget || !weather) return;
+  const wrapper = wWidget.closest('.widget-wrapper');
+  if (!wrapper) return;
+  const size = weatherWidgetSizeOf(wrapper);
+  wrapper.querySelector('.widget')?.remove();
+  wrapper.insertAdjacentHTML('beforeend', renderWeatherWidget(weather, size));
+  const newWidget = container.querySelector('#weather-widget');
+  if (newWidget && window.lucide) window.lucide.createIcons({ el: newWidget });
+  wireWeatherRefresh(container, onUpdated, signal);
+  wireWeatherExpand(container, signal);
+  wireWeatherHourlyNav(container, signal);
+}
+
+/**
+ * Tag-Schritt an der Stundenkurve. `remount` tauscht die konkrete Flaeche
+ * (Dashboard-Kachel oder Wand-Wetter); fehlt er, gilt die Kachel.
+ */
+function wireWeatherHourlyNav(container, signal, { remount = null } = {}) {
+  const root = container.querySelector('[data-weather-hourly-nav]');
+  if (!root) return;
+  root.querySelectorAll('[data-weather-hourly-step]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const weather = _weatherHourlyPayload;
+      if (!weather) return;
+      const keys = weatherHourlyDayKeys(weather);
+      const current = resolveWeatherHourlyDateKey(weather);
+      const idx = keys.indexOf(current);
+      if (idx < 0) return;
+      const delta = Number(btn.dataset.weatherHourlyStep) || 0;
+      const next = keys[idx + delta];
+      if (!next || next === current) return;
+      _weatherHourlyDateKey = next;
+      if (typeof remount === 'function') remount();
+      else remountWeatherWidget(container, weather, signal);
+      container.querySelector(`[data-weather-hourly-step="${delta}"]`)?.focus();
+    }, { signal });
+  });
+}
+
+/** Wand: nur den Wetterblock neu zeichnen (Tagwechsel ohne ganze Flaeche). */
+function remountWallWeather(container, signal) {
+  const weather = _weatherHourlyPayload;
+  const host = container.querySelector('.wall__weather');
+  if (!host || !weather) return;
+  const html = renderWallWeather(weather);
+  if (!html) return;
+  host.outerHTML = html.trim();
+  const next = container.querySelector('.wall__weather');
+  if (next && window.lucide) window.lucide.createIcons({ el: next });
+  wireWeatherHourlyNav(container, signal, {
+    remount: () => remountWallWeather(container, signal),
+  });
+}
+
+function wireWeatherExpand(container, signal) {
+  const hit = container.querySelector('#weather-widget [data-weather-expand]');
+  if (!hit) return;
+
+  const toggle = () => {
+    if (!_weatherHourlyPayload) return;
+    _weatherHourlyExpanded = !_weatherHourlyExpanded;
+    if (_weatherHourlyExpanded && !_weatherHourlyDateKey) {
+      resolveWeatherHourlyDateKey(_weatherHourlyPayload);
+    }
+    remountWeatherWidget(container, _weatherHourlyPayload, signal);
+  };
+
+  hit.addEventListener('click', (e) => {
+    if (e.target.closest('a, button')) return;
+    toggle();
+  }, { signal });
+
+  hit.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    if (e.target !== hit) return;
+    e.preventDefault();
+    toggle();
+  }, { signal });
+}
+
 function wireWeatherRefresh(container, onUpdated = null, signal) {
+  if (typeof onUpdated === 'function') _weatherRefreshOnUpdated = onUpdated;
   const refreshBtn = container.querySelector('#weather-refresh-btn');
   if (!refreshBtn) return;
   const doWeatherRefresh = async () => {
@@ -8721,15 +8947,8 @@ function wireWeatherRefresh(container, onUpdated = null, signal) {
         window.yuvomi?.showToast(t('common.errorGeneric'), 'danger');
         return;
       }
-      const wWidget = container.querySelector('#weather-widget');
-      if (wWidget) {
-        const wrapper = wWidget.closest('.widget-wrapper');
-        if (wrapper) {
-          wrapper.querySelector('.widget')?.remove();
-          wrapper.insertAdjacentHTML('beforeend', renderWeatherWidget(res.data));
-        }
-        const newWidget = container.querySelector('#weather-widget');
-        if (newWidget && window.lucide) window.lucide.createIcons({ el: newWidget });
+      if (container.querySelector('#weather-widget')) {
+        remountWeatherWidget(container, res.data, signal, onUpdated);
         onUpdated?.(res.data);
         window.yuvomi?.showToast(t('dashboard.weatherUpdated'), 'success', 1500);
       }

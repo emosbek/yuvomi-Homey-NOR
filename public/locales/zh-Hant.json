@@ -423,6 +423,16 @@
         "nutritionEntries": "今天 {{count}} 筆紀錄",
         "nutritionEntries_one": "今天 {{count}} 筆紀錄",
         "weatherUnavailable": "目前無法取得天氣資訊",
+        "weatherHourlyChart": "每小時氣溫、降水和風力",
+        "weatherHourlyShow": "顯示每小時預報",
+        "weatherHourlyHide": "隱藏每小時預報",
+        "weatherHourlyTemp": "氣溫",
+        "weatherHourlyPrecip": "降水",
+        "weatherHourlyPrecipMax": "最大降水",
+        "weatherHourlyWind": "風",
+        "weatherHourlyGust": "陣風",
+        "weatherHourlyPrev": "上一天",
+        "weatherHourlyNext": "下一天",
         "wallScreensaverNone": "螢幕保護程式無法使用。",
         "wallScreensaverStart": "螢幕保護"
     },
@@ -3359,7 +3369,7 @@
         "permIntroMore": "各個成員可以不同於角色的預設設定。若不設定，每個角色都擁有完全存取權限；管理員始終如此。",
         "weatherProviderMetNorway": "MET Norway (api.met.no)",
         "weatherProviderLabel": "Weather data source",
-        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast) — good for Norway, works worldwide, no API key."
+        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast), good for Norway, works worldwide, no API key."
     },
     "login": {
         "tagline": "歡迎回來。你的家，盡在一處。",

@@ -423,6 +423,16 @@
         "nutritionEntries": "{{count}} oppføringer i dag",
         "nutritionEntries_one": "{{count}} oppføring i dag",
         "weatherUnavailable": "Været er ikke tilgjengelig akkurat nå",
+        "weatherHourlyChart": "Timevis temperatur, nedbør og vind",
+        "weatherHourlyShow": "Vis timeprognose",
+        "weatherHourlyHide": "Skjul timeprognose",
+        "weatherHourlyTemp": "Temperatur",
+        "weatherHourlyPrecip": "Nedbør",
+        "weatherHourlyPrecipMax": "Maks nedbør",
+        "weatherHourlyWind": "Vind",
+        "weatherHourlyGust": "Vindkast",
+        "weatherHourlyPrev": "Forrige dag",
+        "weatherHourlyNext": "Neste dag",
         "wallScreensaverNone": "Skjermsparer ikke tilgjengelig.",
         "wallScreensaverStart": "Skjermsparer"
     },
@@ -3359,7 +3369,7 @@
         "permIntroMore": "Individuelle medlemmer kan avvike fra standardinnstillingene for rollen. Hvis ingenting er angitt, har alle roller full tilgang; administratorer har alltid full tilgang.",
         "weatherProviderMetNorway": "MET Norway (api.met.no)",
         "weatherProviderLabel": "Værdatakilde",
-        "weatherProviderHint": "Open-Meteo er standard globalt. MET Norway bruker Meteorologisk institutts Locationforecast — godt for Norge, fungerer verdensomspennende, ingen API-nøkkel."
+        "weatherProviderHint": "Open-Meteo er standard globalt. MET Norway bruker Meteorologisk institutts Locationforecast, godt for Norge, fungerer verdensomspennende, ingen API-nøkkel."
     },
     "login": {
         "tagline": "Velkommen tilbake. Hjemmet ditt samlet på ett sted.",

@@ -503,6 +503,16 @@
         "nutritionEntries_few": "Сьогодні {{count}} записи",
         "nutritionEntries_many": "Сьогодні {{count}} записів",
         "weatherUnavailable": "Погода зараз недоступна",
+        "weatherHourlyChart": "Погодинна температура, опади та вітер",
+        "weatherHourlyShow": "Показати погодинний прогноз",
+        "weatherHourlyHide": "Сховати погодинний прогноз",
+        "weatherHourlyTemp": "Температура",
+        "weatherHourlyPrecip": "Опади",
+        "weatherHourlyPrecipMax": "Макс. опади",
+        "weatherHourlyWind": "Вітер",
+        "weatherHourlyGust": "Пориви",
+        "weatherHourlyPrev": "Попередній день",
+        "weatherHourlyNext": "Наступний день",
         "wallScreensaverNone": "Заставка недоступна.",
         "wallScreensaverStart": "Заставка"
     },
@@ -3569,7 +3579,7 @@
         "permIntroMore": "Окремі учасники можуть відрізнятися від типового значення ролі. Без налаштувань кожна роль має повний доступ; адміністратори - завжди.",
         "weatherProviderMetNorway": "MET Norway (api.met.no)",
         "weatherProviderLabel": "Weather data source",
-        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast) — good for Norway, works worldwide, no API key."
+        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast), good for Norway, works worldwide, no API key."
     },
     "login": {
         "tagline": "З поверненням. Ваш дім - в одному місці.",

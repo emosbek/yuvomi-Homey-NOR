@@ -4035,6 +4035,26 @@ test('Wetter-Wand: dieselbe Regel, nicht nur auf der Karte', async () => {
   assert(labels[0] !== 'common.today', 'die Wand beschriftet morgen als "Heute"');
 });
 
+test('Wetter-Wand: mit hourly steht die Stundenkurve statt der 4-Tage-Leiste', async () => {
+  const { __test } = await import('../public/pages/dashboard.js');
+  const withHourly = {
+    ...WEATHER_FIXTURE,
+    provider: 'open-meteo',
+    hourly: [
+      { date: '2026-08-24', hour: 10, temp: 24, wind: 8, precip: 0, icon: 'sun' },
+      { date: '2026-08-24', hour: 11, temp: 25, wind: 9, precip: 0, icon: 'sun' },
+      { date: '2026-08-24', hour: 12, temp: 26, wind: 10, precip: 0.2, icon: 'cloud-sun' },
+      { date: '2026-08-25', hour: 10, temp: 22, wind: 7, precip: 0, icon: 'cloud' },
+      { date: '2026-08-25', hour: 11, temp: 23, wind: 8, precip: 0, icon: 'cloud' },
+    ],
+  };
+  const html = __test.renderWallWeather(withHourly);
+  assert(html.includes('wall__weather--hourly'), 'Wand markiert Stundenmodus');
+  assert(html.includes('data-weather-hourly'), 'Stundenkurve fehlt an der Wand');
+  assert(html.includes('data-weather-hourly-nav'), 'Tagwahl fehlt an der Wand');
+  assert(!html.includes('wall-weather__forecast'), '4-Tage-Leiste muss der Kurve weichen');
+});
+
 /* Hoch und Tief des laufenden Tages: die Karte trug fuer jeden Folgetag eine
  * Spanne, fuer heute aber nur den Momentanwert - genau die Luecke aus #851. */
 test('Wetter: der Hauptblock traegt Hoch und Tief des laufenden Tages', async () => {

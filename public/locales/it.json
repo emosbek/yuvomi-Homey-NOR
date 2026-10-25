@@ -423,6 +423,16 @@
         "nutritionEntries": "{{count}} voci oggi",
         "nutritionEntries_one": "{{count}} voce oggi",
         "weatherUnavailable": "Meteo al momento non disponibile",
+        "weatherHourlyChart": "Temperatura, precipitazioni e vento orari",
+        "weatherHourlyShow": "Mostra previsione oraria",
+        "weatherHourlyHide": "Nascondi previsione oraria",
+        "weatherHourlyTemp": "Temperatura",
+        "weatherHourlyPrecip": "Precipitazioni",
+        "weatherHourlyPrecipMax": "Precipitazioni max.",
+        "weatherHourlyWind": "Vento",
+        "weatherHourlyGust": "Raffiche",
+        "weatherHourlyPrev": "Giorno precedente",
+        "weatherHourlyNext": "Giorno successivo",
         "wallScreensaverNone": "Salvaschermo non disponibile.",
         "wallScreensaverStart": "Salvaschermo"
     },
@@ -3359,7 +3369,7 @@
         "permIntroMore": "Ogni membro può differire dal valore predefinito del ruolo. Senza impostazioni, ogni ruolo ha accesso completo; gli amministratori sempre.",
         "weatherProviderMetNorway": "MET Norway (api.met.no)",
         "weatherProviderLabel": "Weather data source",
-        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast) — good for Norway, works worldwide, no API key."
+        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast), good for Norway, works worldwide, no API key."
     },
     "login": {
         "tagline": "Bentornato. La tua casa in un unico posto.",

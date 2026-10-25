@@ -33,7 +33,11 @@ async function startApp({ env = {}, db = {}, fetchFn, userId, logger } = {}) {
 }
 
 const OM_FETCH = async (url) => {
-  if (new URL(String(url)).hostname !== 'api.open-meteo.com') throw new Error('unexpected URL: ' + url);
+  const u = new URL(String(url));
+  if (u.hostname !== 'api.open-meteo.com') throw new Error('unexpected URL: ' + url);
+  assert.match(u.searchParams.get('hourly') || '', /temperature_2m/);
+  assert.match(u.searchParams.get('hourly') || '', /wind_gusts_10m/);
+  assert.match(u.searchParams.get('hourly') || '', /weather_code/);
   return {
     ok: true,
     json: async () => ({
@@ -44,6 +48,19 @@ const OM_FETCH = async (url) => {
         weather_code: [2, 61, 3, 0, 80],
         temperature_2m_max: [22, 18, 20, 25, 17],
         temperature_2m_min: [14, 12, 13, 16, 11],
+      },
+      hourly: {
+        time: [
+          '2026-06-05T10:00', '2026-06-05T11:00',
+          '2026-06-06T09:00', '2026-06-07T09:00',
+        ],
+        temperature_2m: [18, 19, 16, 20],
+        precipitation: [0, 0.4, 1.1, 0],
+        snowfall: [0, 0, 0, 0],
+        wind_speed_10m: [10, 12, 14, 8],
+        wind_gusts_10m: [18, 22, 25, 15],
+        wind_direction_10m: [180, 200, 220, 90],
+        weather_code: [2, 61, 61, 0],
       },
     }),
   };
@@ -193,6 +210,14 @@ test('Open-Meteo via env: provider + city + cloud-sun icon + wmo desc + forecast
     const fc = body.data.forecast;
     assert.ok(Array.isArray(fc) && fc.length > 0);
     for (const k of ['date', 'temp_min', 'temp_max', 'icon', 'desc']) assert.ok(k in fc[0]);
+    // forecast_days=6: alle Stundenpunkte der Mock-Antwort (05.–07. Juni).
+    assert.ok(Array.isArray(body.data.hourly));
+    assert.equal(body.data.hourly.length, 4);
+    assert.equal(body.data.hourly[0].icon, 'cloud-sun');
+    assert.equal(body.data.hourly[1].icon, 'cloud-rain');
+    assert.equal(body.data.hourly[1].gust, 22);
+    assert.equal(body.data.hourly[1].windDir, 200);
+    assert.equal(body.data.hourly[1].precip, 0.4);
   } finally { await close(); }
 });
 

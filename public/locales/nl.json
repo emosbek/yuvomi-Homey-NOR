@@ -423,6 +423,16 @@
         "nutritionEntries": "{{count}} items vandaag",
         "nutritionEntries_one": "{{count}} item vandaag",
         "weatherUnavailable": "Weer momenteel niet beschikbaar",
+        "weatherHourlyChart": "Uurlijkse temperatuur, neerslag en wind",
+        "weatherHourlyShow": "Uurlijkse voorspelling tonen",
+        "weatherHourlyHide": "Uurlijkse voorspelling verbergen",
+        "weatherHourlyTemp": "Temperatuur",
+        "weatherHourlyPrecip": "Neerslag",
+        "weatherHourlyPrecipMax": "Max. neerslag",
+        "weatherHourlyWind": "Wind",
+        "weatherHourlyGust": "Windstoten",
+        "weatherHourlyPrev": "Vorige dag",
+        "weatherHourlyNext": "Volgende dag",
         "wallScreensaverNone": "Schermbeveiliging niet beschikbaar.",
         "wallScreensaverStart": "Schermbeveiliging"
     },
@@ -3359,7 +3369,7 @@
         "permIntroMore": "Individuele leden kunnen afwijken van de standaard van de rol. Zonder instelling heeft elke rol volledige toegang; beheerders altijd.",
         "weatherProviderMetNorway": "MET Norway (api.met.no)",
         "weatherProviderLabel": "Weather data source",
-        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast) — good for Norway, works worldwide, no API key."
+        "weatherProviderHint": "Open-Meteo is the default worldwide. MET Norway uses the Norwegian Meteorological Institute forecast (Locationforecast), good for Norway, works worldwide, no API key."
     },
     "login": {
         "tagline": "Welkom terug. Je huishouden op één plek.",
