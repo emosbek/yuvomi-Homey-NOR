@@ -1,12 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   drawableHourlyDates,
   hourlyForDate,
   hourlyHorizon,
   nextDateKey,
   weatherHourlyChartMarkup,
+  WEATHER_HOURLY_TEMP,
+  WEATHER_HOURLY_WIND,
 } from '../public/utils/weather-hourly-chart.js';
+
+const dashboardCss = readFileSync(new URL('../public/styles/dashboard.css', import.meta.url), 'utf8');
 
 const HOURLY = [
   { date: '2026-10-25', hour: 22, temp: 8, wind: 12, precip: 0.4, icon: 'cloud-rain', windDir: 200 },
@@ -78,4 +83,17 @@ test('weatherHourlyChartMarkup: single day has no mid-chart day label', () => {
   const html = weatherHourlyChartMarkup(oneDay, { locale: 'nb' });
   assert.match(html, /weather-hourly-chart__temp/);
   assert.doesNotMatch(html, /weather-hourly-chart__day-label/);
+});
+
+test('mobile: weather hourly SVGs opt out of shared chart-inset left gutter', () => {
+  assert.match(dashboardCss, /svg\.chart\.weather-hourly-chart\s*\{[^}]*--chart-inset:\s*0px/s);
+  assert.match(dashboardCss, /svg\.chart\.weather-hourly-chart\s*\{[^}]*padding-left:\s*0/s);
+  assert.match(dashboardCss, new RegExp(
+    `svg\\.chart\\.weather-hourly-chart--temp\\s*\\{[^}]*aspect-ratio:\\s*${WEATHER_HOURLY_TEMP.W}\\s*/\\s*${WEATHER_HOURLY_TEMP.H}`,
+    's',
+  ));
+  assert.match(dashboardCss, new RegExp(
+    `svg\\.chart\\.weather-hourly-chart--wind\\s*\\{[^}]*aspect-ratio:\\s*${WEATHER_HOURLY_WIND.W}\\s*/\\s*${WEATHER_HOURLY_WIND.H}`,
+    's',
+  ));
 });

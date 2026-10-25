@@ -1868,6 +1868,25 @@ svg.weather-forecast__icon {
   display: block;
 }
 
+/* Weather panels use short °C / m/s ticks inside their own 720-wide PAD_L /
+ * PAD_R. The shared svg.chart --chart-inset (panel.css) is sized for long
+ * budget labels like "5.550 €" and left a large empty band on phone-width
+ * widgets — opt out and size the viewBox correctly. */
+svg.chart.weather-hourly-chart {
+  --chart-inset: 0px;
+  width: 100%;
+  padding-left: 0;
+  --chart-scale: tan(atan2(100cqi, 720px));
+}
+
+svg.chart.weather-hourly-chart--temp {
+  aspect-ratio: 720 / 160;
+}
+
+svg.chart.weather-hourly-chart--wind {
+  aspect-ratio: 720 / 120;
+}
+
 .weather-hourly-chart__temp {
   stroke: var(--weather-band-warm, #b45309);
   stroke-width: 2;
