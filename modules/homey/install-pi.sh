@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Install Yuvomi and the Homey gateway on the Raspberry Pi that can see Homey.
 # Run it on the Pi, not from Cursor Cloud:
-#   curl -fsSL https://raw.githubusercontent.com/emosbek/yuvomi-Homey-NOR/cursor/homey-overview-widget-be88/modules/homey/install-pi.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/emosbek/yuvomi-Homey-NOR/cursor/weather-hourly-mobile-gutter-be88/modules/homey/install-pi.sh | sudo bash
 set -euo pipefail
 
 REPO="${YUVOMI_REPO:-https://github.com/emosbek/yuvomi-Homey-NOR.git}"
-BRANCH="${YUVOMI_BRANCH:-cursor/homey-overview-widget-be88}"
+BRANCH="${YUVOMI_BRANCH:-cursor/weather-hourly-mobile-gutter-be88}"
 DEST="${YUVOMI_DIR:-/opt/yuvomi}"
 HOST="${YUVOMI_HOST:-192.168.1.24}"
 
