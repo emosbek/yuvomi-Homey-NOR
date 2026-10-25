@@ -70,9 +70,11 @@ COMPOSE=(docker compose -f "${DEST}/modules/homey/compose.yml")
 "${COMPOSE[@]}" build yuvomi
 "${COMPOSE[@]}" up -d --remove-orphans --force-recreate
 
+# Quiet wait: the gateway is a second behind `docker compose up`, and curl -S
+# would print "Failed to connect to 127.0.0.1 port 3000" on every attempt.
 ok=0
 for _ in $(seq 1 60); do
-  if curl -fsS "http://127.0.0.1:3000/health" >/dev/null; then
+  if curl -fs --connect-timeout 1 "http://127.0.0.1:3000/health" >/dev/null 2>&1; then
     ok=1
     break
   fi
