@@ -62,9 +62,13 @@ EOF
   echo "Created ${DEST}/.env. Keep that file. The database cannot be opened without the key in it."
 fi
 
-# The gateway loads its code once, at start. A later git checkout does not
-# reach the running process, so an update has to recreate the container.
-docker compose -f "${DEST}/modules/homey/compose.yml" up -d --pull always --remove-orphans --force-recreate
+# Build Yuvomi from this checkout (MET Norway, hourly weather, Homey-NOR UI),
+# then recreate. Do not `--pull always` an upstream image — that skips the
+# fork's server/ and public/ and was why weather vanished after an "update".
+# The gateway also loads only at start, so it must be recreated too.
+COMPOSE=(docker compose -f "${DEST}/modules/homey/compose.yml")
+"${COMPOSE[@]}" build yuvomi
+"${COMPOSE[@]}" up -d --remove-orphans --force-recreate
 
 ok=0
 for _ in $(seq 1 60); do

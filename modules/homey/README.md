@@ -15,7 +15,7 @@ On the Raspberry Pi (default address `192.168.1.24`):
 curl -fsSL https://raw.githubusercontent.com/emosbek/yuvomi-Homey-NOR/cursor/weather-hourly-mobile-gutter-be88/modules/homey/install-pi.sh | sudo bash
 ```
 
-The script clones this branch to `/opt/yuvomi`, installs Docker if needed, and starts Yuvomi plus the gateway. Run the same command again after an update. The gateway loads its code only when the container starts, so the script recreates it. Open `http://192.168.1.24:3000` from another device on the same network.
+The script clones this branch to `/opt/yuvomi`, installs Docker if needed, **builds Yuvomi from that checkout** (not the upstream GHCR image), and starts Yuvomi plus the gateway. The first build on a Pi can take several minutes. Run the same command again after an update; it rebuilds and recreates the containers. Open `http://192.168.1.24:3000` from another device on the same network.
 
 For local development on a PC on the same network:
 

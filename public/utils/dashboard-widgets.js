@@ -150,10 +150,11 @@ export const COCKPIT_COVERED_WIDGETS = new Set(['tasks', 'calendar', 'shopping',
 // `clock` kommt dazu: auf einem Gerät mit Statusleiste ist eine zweite Uhr
 // Doppelung. Ihren Zweck erfüllt sie am Wandtablet ohne Systemleiste (#651) -
 // das ist ein bewusster Aufbau, kein Standardfall.
-// `weather` ebenso (Seele-Paket): das Wetter spricht als Masthead-Zeile unterm
-// Gruß; die große Karte mit Vorhersage ist der Wandtablet-Opt-in im Tray.
-// Bestandslayouts behalten ihre gespeicherte Sichtbarkeit - dort entfällt
-// stattdessen die Masthead-Zeile (kein Echo).
+// `weather` is visible by default on this Homey-NOR fork: MET Norway / hourly
+// chart are first-class overview features. Upstream Yuvomi keeps weather as a
+// masthead-only opt-in; here the card stays in the grid. Saved layouts still
+// keep their own visibility. When the card is on, the masthead line stays off
+// (no echo).
 // `quicklinks` reiht sich bei den Opt-ins ein, und zwar aus dem staerksten der
 // hier genannten Gruende: die Reihe ist am ersten Tag LEER. Sichtbar ab Werk
 // haette jeder Haushalt - auch jeder bestehende, denn eine neu bekannte Id erbt
@@ -176,7 +177,7 @@ export const COCKPIT_COVERED_WIDGETS = new Set(['tasks', 'calendar', 'shopping',
 // gespeichert haben (keine Migration); nur wer der Vorgabe folgt oder ein
 // Layout ohne `budget` mitbringt, startet ohne. Die Kennzahlreihe fuehrt den
 // Saldo aus demselben Grund nicht mehr (METRIC_TILE_ORDER, pages/dashboard.js).
-export const DEFAULT_HIDDEN_WIDGETS = new Set([...COCKPIT_COVERED_WIDGETS, 'budget', 'rewards', 'health', 'cycle', 'fasting', 'nutrition', 'housekeeping', 'schedule', 'waste', 'pantry', 'clock', 'weather', 'quicklinks']);
+export const DEFAULT_HIDDEN_WIDGETS = new Set([...COCKPIT_COVERED_WIDGETS, 'budget', 'rewards', 'health', 'cycle', 'fasting', 'nutrition', 'housekeeping', 'schedule', 'waste', 'pantry', 'clock', 'quicklinks']);
 
 export function defaultWidgetVisible(id) {
   return !DEFAULT_HIDDEN_WIDGETS.has(id);
