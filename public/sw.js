@@ -19,7 +19,7 @@
  *   → bypassCacheUntil (in-memory + Cache API für SW-Restart-Robustheit)
  */
 
-const APP_RELEASE        = '2.80.0';
+const APP_RELEASE        = '2.81.0';
 const APP_BUILD_REVISION = '__YUVOMI_BUILD_REVISION__';
 const CACHE_RELEASE      = `${APP_RELEASE}-${APP_BUILD_REVISION}`;
 const SHELL_CACHE        = `yuvomi-shell-${CACHE_RELEASE}`;
@@ -141,6 +141,7 @@ const APP_SHELL = [
   '/utils/digits.js',
   '/utils/day-label.js',
   '/utils/date-format.js',
+  '/utils/interval-date.js',
   '/utils/currency-codes.js',
   '/utils/calendar-delete.js',
   '/utils/document-expiry.js',
@@ -210,6 +211,7 @@ const APP_SHELL = [
   '/utils/money.js',
   '/utils/amount-field.js',
   '/utils/nav-badges.js',
+  '/utils/note-access.js',
   '/utils/note-category-filter.js',
   '/utils/note-category-name.js',
   '/utils/note-category-overflow.js',
@@ -277,6 +279,7 @@ const APP_SHELL = [
   '/utils/version.js',
   '/utils/upload-limit.js',
   '/utils/wall-mode.js',
+  '/utils/night-hours.js',
   '/utils/web-share.js',
   '/utils/week-strip.js',
   '/utils/overlap-lanes.js',
@@ -286,6 +289,8 @@ const APP_SHELL = [
   // Ohne Precache waere die Wahl genau dann wirkungslos, wenn die Seite
   // gebraucht wird - offline.
   '/theme-init.js',
+  // theme-init.js fragt die Nachtstunden aus dieser Datei (#2234).
+  '/night-hours.js',
   '/manifest.json',
   '/favicon.ico',
   '/icons/favicon-32.png',
@@ -404,6 +409,7 @@ const PAGE_MODULES = [
   '/settings/region-presets.js',
   '/settings/weather-location.js',
   '/settings/family-users.js',
+  '/settings/assignee-menu.js',
   '/settings/module-install-errors.js',
   '/settings/pages/personal-account.js',
   '/settings/pages/personal-schedule.js',

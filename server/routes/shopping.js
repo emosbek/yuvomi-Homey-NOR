@@ -606,8 +606,17 @@ router.patch('/items/:itemId', (req, res) => {
       if (n === null) {
         return res.status(400).json({ error: 'list_id muss eine Listen-ID sein.', code: 400 });
       }
-      if (n !== item.list_id && !db.get().prepare('SELECT 1 FROM shopping_lists WHERE id = ?').get(n)) {
+      const target = n === item.list_id ? null : db.get().prepare(
+        `SELECT ${ACCEPTS_NEW_ITEMS_SQL} AS accepts_new_items FROM shopping_lists sl WHERE sl.id = ?`
+      ).get(n);
+      if (n !== item.list_id && !target) {
         return res.status(400).json({ error: 'Unknown list.', code: 400, reason: 'shopping_list_not_found' });
+      }
+      // Eine nur lesbar gespiegelte Liste ist kein Umzugsziel (#2283). Die
+      // eigene Liste bleibt es: wer einen Artikel darauf bearbeitet, zieht
+      // nicht um.
+      if (target && !target.accepts_new_items) {
+        return res.status(400).json({ error: 'list_id: this list does not accept new items.', code: 400 });
       }
       targetListId = n;
     }
@@ -629,7 +638,7 @@ router.patch('/items/:itemId', (req, res) => {
       // dessen Objekt in eine Liste gezogen würde, in der er nicht steht.
       db.get().transaction(() => {
         // VOR dem Umzug, mit der Zeile der alten Liste.
-        if (moved) moveShoppingMirror(item, targetListId);
+        if (moved) moveShoppingMirror(item, targetListId, req.authUserId || req.session.userId);
 
         db.get().prepare(`
           UPDATE shopping_items
@@ -792,9 +801,21 @@ router.delete('/items/:itemId', (req, res) => {
   }
 });
 
+// Nimmt die Liste neue Artikel an (#2283)? Nein, wenn eine eingeschaltete
+// Zuordnung sie aus einer Erinnerungsliste spiegelt, die für das Konto nur
+// lesbar ist (`writable` = 0, #1840): deren Server wiese den Upload eines
+// hierher verschobenen Artikels ab. NULL heisst, der Server sagt es nicht, und
+// zählt als beschreibbar - wie bei den Zielen für Termine und Aufgaben (#2280).
+// `sl` ist die Liste der umgebenden Abfrage.
+const ACCEPTS_NEW_ITEMS_SQL = `CASE WHEN EXISTS (
+          SELECT 1 FROM caldav_reminder_selection s
+           WHERE s.target_list_id = sl.id AND s.target_module = 'shopping'
+             AND s.enabled = 1 AND s.writable = 0
+        ) THEN 0 ELSE 1 END`;
+
 // --------------------------------------------------------
 // GET /api/v1/shopping
-// Alle Einkaufslisten mit Artikel-Zähler.
+// Alle Einkaufslisten mit Artikel-Zähler und `accepts_new_items` (#2283).
 // Response: { data: ShoppingList[] }
 // --------------------------------------------------------
 router.get('/', (req, res) => {
@@ -803,7 +824,8 @@ router.get('/', (req, res) => {
       SELECT
         sl.*,
         COUNT(si.id)                                          AS item_total,
-        SUM(CASE WHEN si.is_checked = 1 THEN 1 ELSE 0 END)   AS item_checked
+        SUM(CASE WHEN si.is_checked = 1 THEN 1 ELSE 0 END)   AS item_checked,
+        ${ACCEPTS_NEW_ITEMS_SQL}                              AS accepts_new_items
       FROM shopping_lists sl
       LEFT JOIN shopping_items si ON si.list_id = sl.id
       GROUP BY sl.id
@@ -1319,7 +1341,10 @@ router.post('/:listId/import-meal-plan', (req, res) => {
 // --------------------------------------------------------
 // POST /api/v1/shopping/:listId/import-pantry
 // Setzt Vorratsartikel auf die Einkaufsliste (leer oder unter Mindestbestand).
-// Body: { items: [{ pantry_item_id, quantity? }] }
+// Body: { items: [{ pantry_item_id, quantity? } | { pantry_product_id }] }
+//
+// `pantry_product_id` hands over a household product without batches (#1448):
+// its name and category, no quantity, like an empty batch without a minimum.
 //
 // Die Mengen-Angabe kommt als fertiger Anzeigetext vom Client: shopping_items.quantity
 // ist Freitext, und die Einheiten des Vorrats ('pcs', 'can', …) sind erst über t()
@@ -1367,12 +1392,18 @@ router.post('/:listId/import-pantry', (req, res) => {
     // ASCII kennt: "Öl" und "öl" waren zwei Artikel.
     const result = db.transaction(() => {
       const findPantryItem = db.get().prepare('SELECT name, category FROM pantry_items WHERE id = ?');
+      const findPantryProduct = db.get().prepare('SELECT name, category FROM pantry_products WHERE id = ?');
       let missing = 0;
       const rows = [];
       for (const entry of entries) {
-        const pantryItem = findPantryItem.get(Number(entry?.pantry_item_id));
+        const byProduct = entry?.pantry_item_id == null && entry?.pantry_product_id != null;
+        const pantryItem = byProduct
+          ? findPantryProduct.get(Number(entry.pantry_product_id))
+          : findPantryItem.get(Number(entry?.pantry_item_id));
         if (!pantryItem) { missing += 1; continue; }
-        const vQty = str(entry.quantity, 'Menge', { max: MAX_SHORT, required: false });
+        // A product without batches has no stock to measure a shortfall
+        // against: it goes over without a quantity.
+        const vQty = byProduct ? { value: null } : str(entry.quantity, 'Menge', { max: MAX_SHORT, required: false });
         const category = validNames.includes(pantryItem.category) ? pantryItem.category : defaultCat;
         rows.push({ name: pantryItem.name, quantity: vQty.value, category });
       }

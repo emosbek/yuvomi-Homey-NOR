@@ -150,10 +150,11 @@ export const COCKPIT_COVERED_WIDGETS = new Set(['tasks', 'calendar', 'shopping',
 // `clock` kommt dazu: auf einem Gerät mit Statusleiste ist eine zweite Uhr
 // Doppelung. Ihren Zweck erfüllt sie am Wandtablet ohne Systemleiste (#651) -
 // das ist ein bewusster Aufbau, kein Standardfall.
-// `weather` ebenso (Seele-Paket): das Wetter spricht als Masthead-Zeile unterm
-// Gruß; die große Karte mit Vorhersage ist der Wandtablet-Opt-in im Tray.
-// Bestandslayouts behalten ihre gespeicherte Sichtbarkeit - dort entfällt
-// stattdessen die Masthead-Zeile (kein Echo).
+// `weather` is visible by default on this Homey-NOR fork: MET Norway / hourly
+// chart are first-class overview features. Upstream Yuvomi keeps weather as a
+// masthead-only opt-in; here the card stays in the grid. Saved layouts still
+// keep their own visibility. When the card is on, the masthead line stays off
+// (no echo).
 // `quicklinks` reiht sich bei den Opt-ins ein, und zwar aus dem staerksten der
 // hier genannten Gruende: die Reihe ist am ersten Tag LEER. Sichtbar ab Werk
 // haette jeder Haushalt - auch jeder bestehende, denn eine neu bekannte Id erbt
@@ -176,7 +177,7 @@ export const COCKPIT_COVERED_WIDGETS = new Set(['tasks', 'calendar', 'shopping',
 // gespeichert haben (keine Migration); nur wer der Vorgabe folgt oder ein
 // Layout ohne `budget` mitbringt, startet ohne. Die Kennzahlreihe fuehrt den
 // Saldo aus demselben Grund nicht mehr (METRIC_TILE_ORDER, pages/dashboard.js).
-export const DEFAULT_HIDDEN_WIDGETS = new Set([...COCKPIT_COVERED_WIDGETS, 'budget', 'rewards', 'health', 'cycle', 'fasting', 'nutrition', 'housekeeping', 'schedule', 'waste', 'pantry', 'clock', 'weather', 'quicklinks']);
+export const DEFAULT_HIDDEN_WIDGETS = new Set([...COCKPIT_COVERED_WIDGETS, 'budget', 'rewards', 'health', 'cycle', 'fasting', 'nutrition', 'housekeeping', 'schedule', 'waste', 'pantry', 'clock', 'quicklinks']);
 
 export function defaultWidgetVisible(id) {
   return !DEFAULT_HIDDEN_WIDGETS.has(id);
@@ -530,6 +531,20 @@ export function normalizeShoppingListSelection(value) {
   return [...new Set(value.map(Number).filter((id) => Number.isInteger(id) && id > 0))];
 }
 
+/**
+ * Die gespeicherte Kalender-Auswahl der Kalender-Kachel als Schluessel (#2062):
+ * `local:N`, `cal:N` oder `sub:N` (die Schluessel des Kalendermoduls), ohne
+ * Doppelte. Was sonst im Layout steht, faellt weg - dieselbe Form, die die
+ * Route aus `?events_calendar=` liest (server/services/calendar-selection.js).
+ *
+ * @param {unknown} value `options.calendars`
+ * @returns {string[]}
+ */
+export function normalizeCalendarSelection(value) {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter((key) => typeof key === 'string' && /^(local|cal|sub):[1-9]\d{0,14}$/.test(key)))];
+}
+
 export function dashboardQuery(config) {
   const params = new URLSearchParams();
   const optionsOf = (id) => (Array.isArray(config) ? config.find((w) => w.id === id)?.options : null) ?? {};
@@ -542,6 +557,10 @@ export function dashboardQuery(config) {
   // ein gespeicherter Fremdwert ergibt hier dieselbe Anfrage wie gar keiner.
   const eventLimit = clampEventLimit(optionsOf('calendar').limit);
   if (eventLimit !== EVENT_LIMIT_DEFAULT) params.set('events_limit', String(eventLimit));
+  // Die Kalender-Auswahl (#2062) reist wie „nur meine": sie wirkt auf die
+  // Termine der ganzen Uebersicht, also auch auf die Wand, die dieselbe
+  // Einstellung liest. Keine Auswahl steht in keiner Anfrage.
+  for (const key of normalizeCalendarSelection(optionsOf('calendar').calendars)) params.append('events_calendar', key);
   for (const key of optionsOf('tasks').categories ?? []) params.append('tasks_category', key);
   for (const id of optionsOf('notes').categories ?? []) params.append('notes_category', String(id));
   // Die Listen-Auswahl der Einkaufs-Kachel (#1818). Sie reist wie jede andere

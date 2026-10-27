@@ -25,6 +25,7 @@ export const REFUSAL_MESSAGES = new Map([
   ['module_access_denied', 'common.errorModuleNoAccess'],
   ['module_read_only', 'settings.permReadOnlyBanner'],
   ['task_locked', 'tasks.errorLocked'],
+  ['note_locked', 'notes.errorLocked'],
   ['recipe_mirrored', 'recipes.errorMirrored'],
   // api.js holt bei einer 403 auf einen Schreibzugriff einmal ein frisches
   // Token und wiederholt. Diesen Satz sieht also nur, wem das nicht half.
@@ -202,6 +203,7 @@ export const CASE_MESSAGES = new Map([
   // der Dialog bleibt offen und bietet die aktuellen an.
   ['subscriptions_selected_category_not_found', 'subscriptions.errorSelectedCategoryGone'],
   ['subscriptions_selected_payment_method_not_found', 'subscriptions.errorSelectedPaymentMethodGone'],
+  ['subscriptions_account_not_found', 'subscriptions.errorAccountGone'],
   ['subscriptions_category_exists', 'subscriptions.errorCategoryExists'],
   ['subscriptions_payment_method_exists', 'subscriptions.errorPaymentMethodExists'],
   // Eingaben, die der Abo-Dialog durchlaesst und erst der Server prueft.
@@ -276,6 +278,9 @@ export const CASE_MESSAGES = new Map([
   ['inventory_location_exists', 'inventory.errorLocationExists'],
   ['inventory_location_not_found', 'inventory.errorLocationGone'],
   ['inventory_category_not_found', 'inventory.errorCategoryGone'],
+  // Vorrat (#1448): ein Produkt ohne Charge wird geloescht, und im
+  // Rueckgaengig-Fenster hat jemand wieder eine Charge eingebucht.
+  ['pantry_product_has_batches', 'pantry.errorProductHasStock'],
   // Aufgaben (#1909). Die 404 heisst "geloescht oder nicht mehr sichtbar"
   // (privat gestellt) - fuer diese Person ist die Aufgabe in beiden Faellen
   // weg, ein Loeschen mit diesem Grund ist deshalb ein Erfolg.
@@ -351,6 +356,45 @@ export const CASE_MESSAGES = new Map([
   ['recipe_providers_sync_unreachable', 'settings.recipeProviderErrorSyncUnreachable'],
   ['recipe_providers_sync_certificate', 'settings.recipeProviderErrorSyncCertificate'],
   ['recipe_providers_sync_bad_response', 'settings.recipeProviderErrorSyncBadResponse'],
+  // Kalender-Verwaltung (#1909). Der Kalender, der weg ist, steht auch in
+  // GONE_REASONS: die Verwaltung laedt dann nach, ein Loeschen mit diesem Grund
+  // ist ein Erfolg. Eine geaenderte Liste beim Umsortieren laedt ebenso nach
+  // (pages/calendar.js). Die Grenze des Namens traegt ihre Zahl (CASE_PARAMS).
+  ['calendar_calendar_not_found', 'calendar.errorCalendarGone'],
+  ['calendar_name_invalid', 'calendar.errorCalendarNameInvalid'],
+  ['calendar_order_changed', 'calendar.errorCalendarOrderChanged'],
+  // Termine (#1909). Den Termin gibt es nicht mehr (geloescht, oder fuer diese
+  // Person nicht mehr sichtbar): die Seite laedt nach, ein Loeschen mit diesem
+  // Grund ist ein Erfolg. Der im Termin-Dialog GEWAEHLTE Kalender fehlt: der
+  // Dialog bleibt offen und bietet die aktuellen an. Die Gruende einer
+  // Einzelausnahme ohne Praefix (invalid_recurrence_id ...) liest die Seite
+  // selbst (occurrenceErrorMessage in pages/calendar.js).
+  ['calendar_event_not_found', 'calendar.errorEventGone'],
+  ['calendar_selected_calendar_not_found', 'calendar.errorSelectedCalendarGone'],
+  // Eine Wiederholung ohne ein einziges Vorkommen ab dem Start (#960) und ein
+  // Serienende vor dem Start (#1607): das Formular prueft das zweite selbst,
+  // dieser Satz ist derselbe wie dort.
+  ['calendar_series_no_occurrence', 'calendar.errorSeriesNoOccurrence'],
+  ['calendar_series_ends_before_start', 'calendar.recurrenceEndBeforeStart'],
+  // Personen einer Sync-Quelle oder eines Imports (#1897, #1221, #1940): die
+  // Auswahl bietet nur Mitglieder an, beide Saetze erreicht nur ein veralteter
+  // Stand (Person entfernt, Konto geloescht). Die Einkaufsliste nennt, warum
+  // sie keine Personen traegt.
+  ['calendar_assignee_not_member', 'settings.syncAssigneeNotMember'],
+  ['calendar_assignee_unknown', 'settings.syncAssigneeUnknown'],
+  ['reminder_list_assignee_not_tasks', 'settings.reminderListAssigneesTasksOnly'],
+  // Immich-Bildschirmschoner in den Admin-Einstellungen (#1909). Die drei
+  // Eingaben, die der Server beim Speichern abweist, und was der
+  // Verbindungstest von Immich zurueckbekommt: ein abgelehnter API-Schluessel
+  // (401/403 von Immich), ein anderer Fehlerstatus (mit Zahl, CASE_PARAMS),
+  // keine Verbindung.
+  ['immich_url_invalid', 'settings.immichErrorUrlInvalid'],
+  ['immich_album_id_invalid', 'settings.immichErrorAlbumIdInvalid'],
+  ['immich_api_key_invalid', 'settings.immichErrorApiKeyInvalid'],
+  ['immich_not_configured', 'settings.immichErrorNotConfigured'],
+  ['immich_api_key_rejected', 'settings.immichErrorApiKeyRejected'],
+  ['immich_http_status', 'settings.immichErrorStatus'],
+  ['immich_unreachable', 'settings.immichErrorUnreachable'],
 ]);
 
 /**
@@ -389,6 +433,8 @@ export const CASE_PARAMS = new Map([
   ['contacts_address_label_too_long', ['limit']],
   ['contacts_address_part_too_long', ['limit']],
   ['recipe_providers_sync_http_status', ['status']],
+  ['calendar_name_invalid', ['limit']],
+  ['immich_http_status', ['status']],
 ]);
 
 const PARAM_MAX = 1_000_000_000;
@@ -460,6 +506,7 @@ export const GONE_REASONS = new Set([
   'subscriptions_payment_method_not_found',
   'subscriptions_selected_category_not_found',
   'subscriptions_selected_payment_method_not_found',
+  'subscriptions_account_not_found',
   'inventory_item_not_found',
   'inventory_tracked_date_not_found',
   'inventory_selected_location_not_found',
@@ -494,6 +541,9 @@ export const GONE_REASONS = new Set([
   'rewards_money_plan_not_found',
   'quick_links_link_not_found',
   'recipe_providers_account_not_found',
+  'calendar_calendar_not_found',
+  'calendar_event_not_found',
+  'calendar_selected_calendar_not_found',
 ]);
 
 /**
@@ -593,6 +643,25 @@ function knownSentence(err) {
  */
 export function errorSentence(err, fallbackKey = 'common.errorGeneric', params = undefined) {
   return knownSentence(err) ?? (params ? t(fallbackKey, params) : t(fallbackKey));
+}
+
+/**
+ * DER SATZ FUER DAS, WAS KEINE SEITE SELBST FAENGT (#1909): Fehlerbildschirm
+ * und unbehandelte Rejection im Router. Dieselben Faelle wie friendlyError -
+ * bekannter Fall, offline, 404, 5xx, Zeitueberschreitung, Netzfehler -, nur
+ * kommt an einer unbekannten Antwort (400, 409) oder einem Wurf im Code nie
+ * dessen Text heraus, sondern der unerwartete Fehler. Die rohe Meldung steht
+ * beim Fehlerbildschirm in den aufklappbaren Details.
+ *
+ * Offline-Mutation (status 0) zuerst: loadErrorSentence sagte dort "keine
+ * Verbindung", der Satz einer gescheiterten Aenderung ist der genauere.
+ *
+ * @param {unknown} err
+ * @returns {string} uebersetzter Satz
+ */
+export function unhandledErrorSentence(err) {
+  if (err?.status === 0) return errorSentence(err);
+  return loadErrorSentence(err) ?? errorSentence(err, 'common.unexpectedError');
 }
 
 /**

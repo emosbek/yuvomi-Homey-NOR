@@ -26,7 +26,9 @@ import { withBusy } from '/utils/ux.js';
 import { formRowHtml, formRowsHtml } from '/utils/form-row.js';
 import { esc, REQUIRED_MARK } from '/utils/html.js';
 import { loadFamilyUsers } from '/settings/family-users.js';
+import { buildAssigneeMenu } from '/settings/assignee-menu.js';
 import { reloadAfterSave } from '/utils/reload-after-save.js';
+import { errorSentence, loadErrorSentence } from '/utils/friendly-error.js';
 
 // Seit R23 ein eigenes Blatt (registry.js, D14; R10-R22 ein Abschnitt im
 // Blatt Kalender). Neu laden heisst, das Blatt neu zu zeichnen - nicht ueber
@@ -158,7 +160,7 @@ function bindDefaultAssigneeBackfill(container) {
         data = (await api.get(`${endpoint}${query}`)).data ?? {};
       });
     } catch (err) {
-      if (isModalContextCurrent(context)) showToast(err.message || t('common.errorGeneric'), 'danger');
+      if (isModalContextCurrent(context)) showToast(errorSentence(err), 'danger');
       return null;
     }
     if (!isModalContextCurrent(context)) return null;
@@ -187,7 +189,7 @@ function bindDefaultAssigneeBackfill(container) {
         ok = true;
       } catch (err) {
         if (err.status === 409) showToast(t('settings.sync.backfillChanged'), 'warning');
-        else showToast(err.message || t('common.errorGeneric'), 'danger');
+        else showToast(errorSentence(err), 'danger');
       }
     });
     return ok;
@@ -328,7 +330,8 @@ function pickMovedCandidates({ count, moved, total, offset, next }) {
             action: 'apply',
             moves: boxes.filter((b) => b.checked).map((b) => {
               const entry = moved[Number(b.dataset.index)];
-              return { event_id: entry.event_id, from_user_id: entry.from_user_id, to_user_id: entry.to_user_id };
+              // Mengen (#1897): genau die Personen, die die Vorschau gezeigt hat.
+              return { event_id: entry.event_id, from_user_ids: entry.from_user_ids, to_user_ids: entry.to_user_ids };
             }),
           });
         });
@@ -343,65 +346,24 @@ function pickMovedCandidates({ count, moved, total, offset, next }) {
 // --------------------------------------------------------------------------
 
 /**
- * Kompaktes Auswahlfeld „Standard-Zuweisung" für eine synchronisierte
- * Kalenderzeile (Google/Apple/CalDAV). Schreibt provider-übergreifend über
- * PATCH /calendar/external-calendars. Options werden async nachgeladen, damit die
- * Zeile sofort rendert; Interaktionen werden vom Zeilen-Label entkoppelt.
+ * Die Standard-Personen einer synchronisierten Kalenderzeile (Google/Apple/
+ * CalDAV, #459, #1897): ein Knopf mit den Namen, der ein Menue mit einem
+ * Schalter je Person oeffnet (assignee-menu.js). Jeder Haken schreibt sofort
+ * ueber PATCH /calendar/external-calendars. Das Panel steht in `host`, nicht
+ * im Zeilen-Label.
  */
-function buildCalendarAssigneeSelect({ source, externalId, currentId }) {
-  const select = document.createElement('select');
-  select.className = 'caldav-calendar-assignee';
-  select.title = t('settings.sync.defaultAssignee');
-  select.setAttribute('aria-label', t('settings.sync.defaultAssignee'));
-
-  const none = document.createElement('option');
-  none.value = '';
-  none.textContent = t('settings.sync.defaultAssigneeNone');
-  select.appendChild(none);
-
-  // Kurzer Ladehinweis, bis die Nutzerliste aufgelöst ist.
-  const loadingOpt = document.createElement('option');
-  loadingOpt.value = '';
-  loadingOpt.disabled = true;
-  loadingOpt.textContent = t('common.loading');
-  select.appendChild(loadingOpt);
-
-  // Klicks/Änderungen nicht an das umschließende Label (Checkbox) weiterreichen.
-  ['click', 'mousedown', 'change'].forEach((ev) =>
-    select.addEventListener(ev, (e) => e.stopPropagation()));
-
-  loadFamilyUsers(currentId).then((users) => {
-    loadingOpt.remove();
-    for (const u of users) {
-      const opt = document.createElement('option');
-      opt.value = String(u.id);
-      opt.textContent = u.display_name;
-      if (Number(currentId) === u.id) opt.selected = true;
-      select.appendChild(opt);
-    }
+function buildCalendarAssigneeMenu({ source, externalId, currentIds, host }) {
+  return buildAssigneeMenu({
+    currentIds,
+    host,
+    save: (ids) => api.patch('/calendar/external-calendars', {
+      source,
+      external_id: externalId,
+      default_assignee_user_ids: ids,
+    }),
+    onSaved: () => showToast(t('settings.ics.updatedToast'), 'success'),
+    onError: (err) => showToast(errorSentence(err), 'danger'),
   });
-
-  let last = currentId ? String(currentId) : '';
-  select.addEventListener('change', async () => {
-    const value = select.value;
-    select.disabled = true;
-    try {
-      await api.patch('/calendar/external-calendars', {
-        source,
-        external_id: externalId,
-        default_assignee_user_id: value ? Number(value) : null,
-      });
-      last = value;
-      showToast(t('settings.ics.updatedToast'), 'success');
-    } catch (err) {
-      select.value = last;
-      showToast(err.message || t('common.errorGeneric'), 'danger');
-    } finally {
-      select.disabled = false;
-    }
-  });
-
-  return select;
 }
 
 // --------------------------------------------------------------------------
@@ -409,6 +371,7 @@ function buildCalendarAssigneeSelect({ source, externalId, currentId }) {
 // --------------------------------------------------------------------------
 
 let calendarListSeq = 0;
+let calendarNameSeq = 0;
 
 function buildCalendarList(account, calendars) {
   const list = document.createElement('div');
@@ -429,18 +392,35 @@ function buildCalendarList(account, calendars) {
     const name = document.createElement('span');
     name.className = 'caldav-calendar-name';
     name.textContent = cal.calendarName || cal.calendarUrl;
+    // Nur lesbar geteilt (#1840): lesen geht, als Ziel neuer Termine wird
+    // der Kalender nicht angeboten. Wartet schon etwas auf den Upload
+    // hierher, nennt die Zeile die Zahl - ein gespeichertes Ziel wird nicht
+    // still geleert.
+    if (cal.writable === false) {
+      const note = document.createElement('span');
+      note.className = 'caldav-calendar-source';
+      note.textContent = cal.waitingUploads > 0
+        ? t('settings.caldavCalendarReadOnlyWaiting', { count: cal.waitingUploads })
+        : t('settings.caldavCalendarReadOnly');
+      name.appendChild(note);
+    }
 
     label.append(checkbox, color, name);
+    // Der Haken heisst wie der Kalender. Als Label-Text trug sein Name sonst
+    // auch den Personen-Knopf mit, der in derselben Zeile steht (#1897).
+    name.id = `caldav-calendar-name-${++calendarNameSeq}`;
+    checkbox.setAttribute('aria-labelledby', name.id);
     // VOR DEM HAKEN, NICHT NACH DEM SYNC: Das Feld stand früher erst da, wenn
     // der Kalender aktiv UND einmal synchronisiert war - also frühestens, als
     // der erste Schwung Termine bereits ohne Zuweisung hereingekommen war, bei
     // Serien Dutzende (#730). Jetzt lässt es sich vorher setzen; der PATCH legt
     // die external_calendars-Zeile nötigenfalls selbst an, und der spätere Sync
     // aktualisiert daran nur Name und Farbe.
-    label.appendChild(buildCalendarAssigneeSelect({
+    label.appendChild(buildCalendarAssigneeMenu({
       source: 'caldav',
       externalId: cal.calendarUrl,
-      currentId: cal.default_assignee_user_id,
+      currentIds: cal.default_assignee_user_ids,
+      host: list,
     }));
     list.appendChild(label);
 
@@ -562,7 +542,7 @@ function renderCalDAVAccount(container, account, calendars, refresh, user) {
   if (calendars.length) {
     const routingHint = document.createElement('p');
     routingHint.className = 'form-hint';
-    routingHint.textContent = t('settings.sync.defaultAssigneeRoutingHint');
+    routingHint.textContent = t('settings.sync.defaultAssigneesRoutingHint');
     card.appendChild(routingHint);
   }
 
@@ -897,7 +877,7 @@ function buildGoogleProvider(googleStatus, user) {
         showToast(t('settings.syncSuccess', { provider: 'Google Calendar' }), 'success');
       } catch (err) {
         if (err.reauthHandled) return;
-        showToast(err.message || t('common.errorGeneric'), 'danger');
+        showToast(googleErrorSentence(err), 'danger');
       } finally {
         syncBtn.disabled = false;
         syncBtn.textContent = t('settings.syncNow');
@@ -946,7 +926,7 @@ function buildGoogleDisconnectButton(googleStatus) {
       );
       window.yuvomi?.navigate(SYNC_CALENDAR_HREF);
     } catch (err) {
-      showToast(err.message || t('common.errorGeneric'), 'danger');
+      showToast(errorSentence(err), 'danger');
     }
   });
   return disconnectBtn;
@@ -1045,7 +1025,7 @@ function buildMirroredCleanup({ count, endpoint }) {
         // hatte. Der Block existiert wegen des Rückstands; der ist jetzt fort.
         group.remove();
       } catch (err) {
-        showToast(err.message || t('common.errorGeneric'), 'danger');
+        showToast(errorSentence(err), 'danger');
       }
     });
   });
@@ -1216,6 +1196,16 @@ function buildProviderHint(text) {
 /** Grund, mit dem /calendar/google/calendars ein abgelehntes Token meldet (#2019). */
 const GOOGLE_REAUTH_REASON = 'google_reauth_required';
 
+/**
+ * Der Satz der App zu einem gescheiterten Google-Aufruf (#1695), nie der Text
+ * des Servers. Konnte handleReauth die Karte nicht neu aufbauen (Status-Abruf
+ * gescheitert), nennt der Toast die abgelaufene Anmeldung - in den Worten, die
+ * die Outlook-Karte fuer denselben Fall hat.
+ */
+function googleErrorSentence(err) {
+  return err?.data?.reason === GOOGLE_REAUTH_REASON ? t('settings.outlookReauthRequired') : errorSentence(err);
+}
+
 function buildGoogleCalendarPicker(googleCall) {
   // Eine Liste, kein Feld (R19): ihr Name ist keine `<label>` ohne
   // Bedienelement, und sie steht nicht im Feld-Dialekt `.form-group`.
@@ -1244,7 +1234,7 @@ function buildGoogleCalendarPicker(googleCall) {
   // wo sie gesetzt wird, samt der Kalender, fuer die die zweite nicht gilt.
   const routingHint = document.createElement('p');
   routingHint.className = 'form-hint';
-  routingHint.textContent = t('settings.sync.defaultAssigneeRoutingHint');
+  routingHint.textContent = t('settings.sync.defaultAssigneesRoutingHint');
   group.appendChild(routingHint);
 
   (async () => {
@@ -1270,13 +1260,16 @@ function buildGoogleCalendarPicker(googleCall) {
         name.textContent = cal.summary || cal.id;
 
         item.append(checkbox, dot, name);
+        name.id = `google-calendar-name-${++calendarNameSeq}`;
+        checkbox.setAttribute('aria-labelledby', name.id);
         // Wie bei CalDAV vor dem Haken setzbar (#730) - hier zählt es doppelt:
         // Das Aktivieren startet den Sync unmittelbar (PATCH /google/calendars),
         // eine Zuweisung danach käme für die erste Ladung immer zu spät.
-        item.appendChild(buildCalendarAssigneeSelect({
+        item.appendChild(buildCalendarAssigneeMenu({
           source: 'google',
           externalId: cal.id,
-          currentId: cal.default_assignee_user_id,
+          currentIds: cal.default_assignee_user_ids,
+          host: list,
         }));
         list.appendChild(item);
 
@@ -1291,7 +1284,7 @@ function buildGoogleCalendarPicker(googleCall) {
               );
             } catch (err) {
               checkbox.checked = !enabled;
-              if (!err.reauthHandled) showToast(err.message || t('common.errorGeneric'), 'danger');
+              if (!err.reauthHandled) showToast(googleErrorSentence(err), 'danger');
             }
           });
         });
@@ -1300,7 +1293,7 @@ function buildGoogleCalendarPicker(googleCall) {
       if (err.reauthHandled) return;
       const p = document.createElement('p');
       p.className = 'form-hint';
-      p.textContent = err.message || t('common.errorGeneric');
+      p.textContent = loadErrorSentence(err) ?? t('common.errorGeneric');
       list.replaceChildren(p);
     }
   })();
@@ -1327,7 +1320,7 @@ function buildGoogleReadonlyToggle(googleStatus, googleCall) {
         await googleCall(() => api.put('/calendar/google/readonly', { readonly: enabled }));
       } catch (err) {
         checkbox.checked = !enabled;
-        if (!err.reauthHandled) showToast(err.message || t('common.errorGeneric'), 'danger');
+        if (!err.reauthHandled) showToast(googleErrorSentence(err), 'danger');
       }
     });
   });
@@ -1377,7 +1370,7 @@ function buildOutlookCalendarList(account, calendars, user) {
           );
         } catch (err) {
           checkbox.checked = !enabled;
-          showToast(err.message || t('common.errorGeneric'), 'danger');
+          showToast(errorSentence(err), 'danger');
         }
       });
     });

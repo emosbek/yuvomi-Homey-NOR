@@ -1,12 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   drawableHourlyDates,
   hourlyForDate,
   hourlyHorizon,
   nextDateKey,
   weatherHourlyChartMarkup,
+  WEATHER_HOURLY_TEMP,
+  WEATHER_HOURLY_WIND,
 } from '../public/utils/weather-hourly-chart.js';
+
+const dashboardCss = readFileSync(new URL('../public/styles/dashboard.css', import.meta.url), 'utf8');
 
 const HOURLY = [
   { date: '2026-10-25', hour: 22, temp: 8, wind: 12, precip: 0.4, icon: 'cloud-rain', windDir: 200 },
@@ -78,4 +83,42 @@ test('weatherHourlyChartMarkup: single day has no mid-chart day label', () => {
   const html = weatherHourlyChartMarkup(oneDay, { locale: 'nb' });
   assert.match(html, /weather-hourly-chart__temp/);
   assert.doesNotMatch(html, /weather-hourly-chart__day-label/);
+});
+
+test('weatherHourlyChartMarkup: precip bars stay inside plot left/right', () => {
+  const points = [
+    { date: '2026-10-25', hour: 16, temp: 8, wind: 20, precip: 3.2, icon: 'cloud-rain' },
+    { date: '2026-10-25', hour: 17, temp: 8, wind: 18, precip: 1.0, icon: 'cloud-rain' },
+    { date: '2026-10-25', hour: 18, temp: 8, wind: 16, precip: 0.4, icon: 'cloud' },
+    { date: '2026-10-25', hour: 23, temp: 7, wind: 14, precip: 2.1, icon: 'cloud-rain' },
+  ];
+  const html = weatherHourlyChartMarkup(points);
+  const left = WEATHER_HOURLY_TEMP.PAD_L;
+  const right = WEATHER_HOURLY_TEMP.W - WEATHER_HOURLY_TEMP.PAD_R;
+  const bars = [...html.matchAll(/class="weather-hourly-chart__rain"[^>]*\bx="([\d.]+)"[^>]*\bwidth="([\d.]+)"/g)];
+  assert.ok(bars.length >= 2, 'expected rain bars');
+  for (const [, xStr, wStr] of bars) {
+    const x = Number(xStr);
+    const w = Number(wStr);
+    assert.ok(x >= left - 0.01, `bar x ${x} left of plot ${left}`);
+    assert.ok(x + w <= right + 0.01, `bar right ${x + w} past plot ${right}`);
+  }
+});
+
+test('mobile: weather hourly SVGs are not class=chart (no shared chart-inset gutter)', () => {
+  const html = weatherHourlyChartMarkup(hourlyHorizon(HOURLY, '2026-10-25'));
+  assert.doesNotMatch(html, /class="chart /);
+  assert.match(html, /class="weather-hourly-chart weather-hourly-chart--temp"/);
+  assert.match(html, /class="weather-hourly-chart weather-hourly-chart--wind"/);
+  assert.equal(WEATHER_HOURLY_TEMP.PAD_L, 22);
+  assert.equal(WEATHER_HOURLY_WIND.PAD_L, 22);
+  assert.match(dashboardCss, new RegExp(
+    `\\.weather-hourly-chart--temp\\s*\\{[^}]*aspect-ratio:\\s*${WEATHER_HOURLY_TEMP.W}\\s*/\\s*${WEATHER_HOURLY_TEMP.H}`,
+    's',
+  ));
+  assert.match(dashboardCss, new RegExp(
+    `\\.weather-hourly-chart--wind\\s*\\{[^}]*aspect-ratio:\\s*${WEATHER_HOURLY_WIND.W}\\s*/\\s*${WEATHER_HOURLY_WIND.H}`,
+    's',
+  ));
+  assert.doesNotMatch(dashboardCss, /svg\.chart\.weather-hourly-chart/);
 });

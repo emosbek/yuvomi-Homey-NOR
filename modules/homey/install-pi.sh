@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Install Yuvomi and the Homey gateway on the Raspberry Pi that can see Homey.
 # Run it on the Pi, not from Cursor Cloud:
-#   curl -fsSL https://raw.githubusercontent.com/emosbek/yuvomi-Homey-NOR/cursor/homey-overview-widget-be88/modules/homey/install-pi.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/emosbek/yuvomi-Homey-NOR/cursor/weather-hourly-mobile-gutter-be88/modules/homey/install-pi.sh | sudo bash
 set -euo pipefail
 
 REPO="${YUVOMI_REPO:-https://github.com/emosbek/yuvomi-Homey-NOR.git}"
-BRANCH="${YUVOMI_BRANCH:-cursor/homey-overview-widget-be88}"
+BRANCH="${YUVOMI_BRANCH:-cursor/weather-hourly-mobile-gutter-be88}"
 DEST="${YUVOMI_DIR:-/opt/yuvomi}"
 HOST="${YUVOMI_HOST:-192.168.1.24}"
 
@@ -62,13 +62,19 @@ EOF
   echo "Created ${DEST}/.env. Keep that file. The database cannot be opened without the key in it."
 fi
 
-# The gateway loads its code once, at start. A later git checkout does not
-# reach the running process, so an update has to recreate the container.
-docker compose -f "${DEST}/modules/homey/compose.yml" up -d --pull always --remove-orphans --force-recreate
+# Build Yuvomi from this checkout (MET Norway, hourly weather, Homey-NOR UI),
+# then recreate. Do not `--pull always` an upstream image — that skips the
+# fork's server/ and public/ and was why weather vanished after an "update".
+# The gateway also loads only at start, so it must be recreated too.
+COMPOSE=(docker compose -f "${DEST}/modules/homey/compose.yml")
+"${COMPOSE[@]}" build yuvomi
+"${COMPOSE[@]}" up -d --remove-orphans --force-recreate
 
+# Quiet wait: the gateway is a second behind `docker compose up`, and curl -S
+# would print "Failed to connect to 127.0.0.1 port 3000" on every attempt.
 ok=0
 for _ in $(seq 1 60); do
-  if curl -fsS "http://127.0.0.1:3000/health" >/dev/null; then
+  if curl -fs --connect-timeout 1 "http://127.0.0.1:3000/health" >/dev/null 2>&1; then
     ok=1
     break
   fi

@@ -13,7 +13,8 @@ const log = createLogger('CalDAV-Reminders');
 
 import * as db from '../db.js';
 import { parseVTODO } from './ics-parser.js';
-import { createCalDAVClient, supportsComponent } from '../utils/caldav-client.js';
+import { createCalDAVClient, supportsComponent, writableColumn, writableFromColumn, collectionUrlOf } from '../utils/caldav-client.js';
+import { createdHere } from './calendar-prune.js';
 import { householdTimeZone, utcToWall } from '../utils/timezone.js';
 import { setItemTags, setTags } from '../utils/task-tags.js';
 import { syncTaskCompletion, recordCompletion, revokeCompletion } from './task-completions.js';
@@ -21,6 +22,10 @@ import * as todoOutbound from './caldav-todo-outbound.js';
 import { createRefusalStop } from './calendar-outbound.js';
 import { runSerialized } from '../utils/sync-lock.js';
 import { calendarDisplayName } from '../utils/calendar-meta.js';
+import { readAllDefaultAssignees, readDefaultAssignees, writeDefaultAssignees } from './default-assignees.js';
+
+/** Standard-Personen fuer eine Liste, die nicht auf Aufgaben zeigt (#1221): die Route antwortet 400. */
+export class ReminderListAssigneeError extends Error {}
 
 // --------------------------------------------------------
 // Pure Mapping Helpers
@@ -139,17 +144,24 @@ async function getReminderLists(accountId, { refresh = false, createClient: make
   // VTODO-Sammlungen bei jedem Seitenaufruf erneut das Netz.
   if (!refresh && account.reminders_discovered_at) {
     const rows = db.get().prepare(`
-      SELECT list_url, list_name, target_module, enabled
+      SELECT id, list_url, list_name, target_module, enabled, writable
       FROM caldav_reminder_selection
       WHERE account_id = ?
       ORDER BY list_name
     `).all(accountId);
+    const sets = readAllDefaultAssignees(db.get(), 'reminderList');
 
     return rows.map(r => ({
       listUrl:      r.list_url,
       listName:     r.list_name,
       targetModule: r.target_module,
       enabled:      r.enabled === 1,
+      // Standard-Personen neuer Aufgaben aus dieser Liste (#1221).
+      defaultAssigneeUserIds: sets.get(Number(r.id)) ?? [],
+      // Nimmt die Liste neue Einträge an (#1840)? null: der Server sagt es
+      // nicht. Dazu, was auf den Upload hierher wartet.
+      writable:       writableFromColumn(r.writable),
+      waitingUploads: todoOutbound.countWaitingTodoUploads(accountId, r.list_url),
     }));
   }
 
@@ -162,19 +174,24 @@ async function getReminderLists(accountId, { refresh = false, createClient: make
   for (const cal of lists) {
     const name     = calendarDisplayName(cal.displayName, 'Reminders');
     const existing = db.get().prepare(
-      'SELECT target_module, enabled FROM caldav_reminder_selection WHERE account_id = ? AND list_url = ?'
+      'SELECT id, target_module, enabled FROM caldav_reminder_selection WHERE account_id = ? AND list_url = ?'
     ).get(accountId, cal.url);
 
     const targetModule = existing ? existing.target_module : 'tasks';
     const enabled      = existing ? existing.enabled : 0;
 
     db.get().prepare(`
-      INSERT INTO caldav_reminder_selection (account_id, list_url, list_name, target_module, enabled)
-      VALUES (?, ?, ?, ?, ?)
-      ON CONFLICT(account_id, list_url) DO UPDATE SET list_name = excluded.list_name
-    `).run(accountId, cal.url, name, targetModule, enabled);
+      INSERT INTO caldav_reminder_selection (account_id, list_url, list_name, target_module, enabled, writable)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(account_id, list_url) DO UPDATE SET list_name = excluded.list_name,
+                                                     writable  = excluded.writable
+    `).run(accountId, cal.url, name, targetModule, enabled, writableColumn(cal));
 
-    result.push({ listUrl: cal.url, listName: name, targetModule, enabled: enabled === 1 });
+    result.push({
+      listUrl: cal.url, listName: name, targetModule, enabled: enabled === 1,
+      defaultAssigneeUserIds: existing ? readDefaultAssignees(db.get(), 'reminderList', existing.id) : [],
+      writable: writableFromColumn(writableColumn(cal)),
+    });
   }
 
   db.get().prepare(`
@@ -185,6 +202,22 @@ async function getReminderLists(accountId, { refresh = false, createClient: make
 
   log.info(`Discovered ${result.length} reminder list(s) for account ${accountId}.`);
   return result;
+}
+
+/**
+ * Die Schreibrechte aus einer Auflistung in die Auswahl übernehmen (#1840),
+ * wie `rememberCalendarWritability` bei den Terminen. Eine Liste, die die
+ * Auflistung nicht nennt, bleibt, wie sie war.
+ */
+function rememberListWritability(accountId, serverCals) {
+  const update = db.get().prepare(`
+    UPDATE caldav_reminder_selection SET writable = ?
+    WHERE account_id = ? AND list_url = ?
+  `);
+  for (const cal of serverCals || []) {
+    if (!cal?.url) continue;
+    update.run(writableColumn(cal), accountId, cal.url);
+  }
 }
 
 function ensureShoppingList(sel) {
@@ -201,7 +234,14 @@ function ensureShoppingList(sel) {
   return id;
 }
 
-function updateReminderSelection(accountId, listUrl, { enabled, targetModule } = {}) {
+/**
+ * @param {number} accountId
+ * @param {string} listUrl
+ * @param {{ enabled?: boolean, targetModule?: string, defaultAssigneeUserIds?: number[] }} [changes]
+ *   `defaultAssigneeUserIds` (#1221): von der Route geprueft; nur fuer eine
+ *   Liste, die auf Aufgaben zeigt - fuer eine Einkaufsliste wirft der Aufruf.
+ */
+function updateReminderSelection(accountId, listUrl, { enabled, targetModule, defaultAssigneeUserIds } = {}) {
   const account = getAccountById(accountId);
   if (!account) {
     throw new Error(`Account ${accountId} not found.`);
@@ -219,6 +259,10 @@ function updateReminderSelection(accountId, listUrl, { enabled, targetModule } =
     throw new Error('Invalid target module (expected "tasks" or "shopping").');
   }
   const newEnabled = enabled === undefined ? sel.enabled : (enabled ? 1 : 0);
+  // Ein Einkaufseintrag hat keine Person (#1221).
+  if (defaultAssigneeUserIds !== undefined && defaultAssigneeUserIds.length && newModule !== 'tasks') {
+    throw new ReminderListAssigneeError('Default assignees can only be set for a list mapped to Tasks.');
+  }
 
   let targetListId = sel.target_list_id;
   if (newModule === 'shopping' && newEnabled === 1) {
@@ -230,6 +274,9 @@ function updateReminderSelection(accountId, listUrl, { enabled, targetModule } =
     SET enabled = ?, target_module = ?, target_list_id = ?
     WHERE account_id = ? AND list_url = ?
   `).run(newEnabled, newModule, targetListId, accountId, listUrl);
+  if (defaultAssigneeUserIds !== undefined) {
+    writeDefaultAssignees(db.get(), 'reminderList', sel.id, defaultAssigneeUserIds);
+  }
 
   log.info(`Reminder selection updated: account ${accountId}, list ${listUrl}, module=${newModule}, enabled=${newEnabled}`);
   return { success: true };
@@ -239,11 +286,27 @@ function updateReminderSelection(accountId, listUrl, { enabled, targetModule } =
 // Upsert Helpers (Inbound: Server → Yuvomi)
 // --------------------------------------------------------
 
+/**
+ * Standard-Personen einer Erinnerungsliste (#1221) an eine NEU eingelesene
+ * Aufgabe - dieselben zwei Stellen wie jede Zuweisung einer Aufgabe
+ * (`tasks.assigned_to` fuer die erste, `task_assignments` fuer alle). Nur
+ * beim ersten Einlesen: was danach an der Aufgabe zugewiesen oder von Hand
+ * entfernt wird, fasst der Sync nicht mehr an, wie bei Kalendern (#459). Ein
+ * VTODO traegt keine Person, also geht nichts zurueck zum Server.
+ * Verwaiste Personen fallen heraus (readDefaultAssignees liest ueber users).
+ */
+function assignListDefault(d, taskId, userIds) {
+  if (!taskId || !userIds?.length) return;
+  d.prepare('UPDATE tasks SET assigned_to = ? WHERE id = ? AND assigned_to IS NULL').run(userIds[0], taskId);
+  const ins = d.prepare('INSERT OR IGNORE INTO task_assignments (task_id, user_id) VALUES (?, ?)');
+  for (const userId of userIds) ins.run(taskId, userId);
+}
+
 // Die Objekt-URL (obj.url des Abrufs) wandert bei jedem Upsert mit: ohne sie ist
 // ein gespiegelter Eintrag für spätere Änderungen und Löschungen unerreichbar
 // (#617). COALESCE, weil ein Abruf ohne URL den gespeicherten Wert nicht
 // entwerten darf.
-function upsertTask(todo, accountId, createdBy, objectUrl = null, { completions = null } = {}) {
+function upsertTask(todo, accountId, createdBy, objectUrl = null, { completions = null, defaultAssignees = [] } = {}) {
   const d = db.get();
   const { date, time } = splitDue(todo.due, householdTimeZone(d));
 
@@ -276,6 +339,7 @@ function upsertTask(todo, accountId, createdBy, objectUrl = null, { completions 
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'caldav', ?, ?)
       `).run(todo.summary, todo.description, priority, status, date, time, createdBy, todo.uid, accountId, objectUrl);
       taskId = row.lastInsertRowid;
+      assignListDefault(d, Number(taskId), defaultAssignees);
     }
 
     // Derselbe Erledigungseintrag wie beim Abhaken in Yuvomi (#1836): ohne ihn
@@ -522,12 +586,35 @@ const PRUNABLE_TABLES = new Set(['tasks', 'shopping_items']);
  *
  * @returns {number} Anzahl gelöschter Einträge.
  */
-export function pruneRemoved(database, table, accountId, seenUids) {
+/**
+ * Markiert die Zeilen dieses Kontos, deren UID ein Abruf geliefert hat, als
+ * gesehen (#1839). Unabhängig vom Prune: auch ein Lauf, der wegen einer nicht
+ * abgerufenen Liste nicht prunt, hat die übrigen gesehen.
+ */
+export function markSeen(database, table, accountId, seenUids) {
+  if (!PRUNABLE_TABLES.has(table)) {
+    throw new Error(`markSeen: refusing to mark unknown table "${table}".`);
+  }
+  const seen = new Set(seenUids);
+  if (!seen.size) return;
+  const rows = database.prepare(
+    `SELECT id, external_uid FROM ${table}
+     WHERE external_source = 'caldav' AND external_account_id = ? AND seen_on_server = 0`
+  ).all(accountId);
+  const mark = database.prepare(`UPDATE ${table} SET seen_on_server = 1 WHERE id = ?`);
+  for (const row of rows) if (seen.has(row.external_uid)) mark.run(row.id);
+}
+
+/**
+ * @param {string[]} [keepUids]  UIDs, die nicht fallen, ohne gesehen zu sein
+ *        (ein wartender Umzug aus einer nicht abgerufenen Liste, #1700)
+ */
+export function pruneRemoved(database, table, accountId, seenUids, keepUids = []) {
   if (!PRUNABLE_TABLES.has(table)) {
     throw new Error(`pruneRemoved: refusing to prune unknown table "${table}".`);
   }
 
-  const uids = [...new Set(seenUids)];
+  const uids = [...new Set([...seenUids, ...keepUids])];
 
   if (uids.length === 0) {
     const remaining = database.prepare(
@@ -544,14 +631,66 @@ export function pruneRemoved(database, table, accountId, seenUids) {
     return 0;
   }
 
-  const placeholders = uids.map(() => '?').join(',');
-  const result = database.prepare(
-    `DELETE FROM ${table}
-     WHERE external_source = 'caldav' AND external_account_id = ?
-       AND external_uid NOT IN (${placeholders})`
-  ).run(accountId, ...uids);
+  // Gesehen (#1839): was dieser Abruf liefert, ist ab jetzt belegt gespiegelt.
+  markSeen(database, table, accountId, seenUids);
+  const seen = new Set(uids);
+  const rows = database.prepare(
+    `SELECT id, external_uid, seen_on_server FROM ${table}
+     WHERE external_source = 'caldav' AND external_account_id = ?`
+  ).all(accountId);
 
-  return result.changes;
+  // NUR WAS GESEHEN WURDE, FÄLLT (#1839), wie beim Termin (`pruneDeletedEvents`):
+  // eine nie gesehene, hier angelegte Zeile geht zurück auf lokal und erneut
+  // hinauf, eine fremde bleibt stehen.
+  const kind = table === 'tasks' ? 'task' : 'item';
+  const del = database.prepare(`DELETE FROM ${table} WHERE id = ?`);
+  let removed = 0;
+  let restored = 0;
+  for (const row of rows) {
+    if (seen.has(row.external_uid)) continue;
+    if (row.seen_on_server) {
+      removed += Number(del.run(row.id).changes);
+    } else if (createdHere(database, row.external_uid, kind, row.id)) {
+      restored += todoBackToLocal(database, table, row, accountId);
+    }
+  }
+  if (restored) {
+    log.warn(`Account ${accountId}: ${restored} ${table} row(s) created here were never seen on the server; they are local again and are uploaded once more.`);
+  }
+  return removed;
+}
+
+/**
+ * Macht eine nie gesehene, hier angelegte Aufgabe oder einen Einkaufsartikel
+ * wieder lokal (#1839). Die Aufgabe bekommt ihr Ziel zurück - Konto und die
+ * Liste, in der ihr Objekt liegen sollte -, der Artikel braucht keines: die
+ * Zuordnung seiner Liste ist das Ziel. Der nächste Upload trägt dieselbe UID;
+ * liegt das Objekt doch oben, übernimmt er es (412).
+ * @returns {number} 1, wenn die Zeile zurückgesetzt wurde
+ */
+function todoBackToLocal(database, table, row, accountId) {
+  const objectUrl = database.prepare(`SELECT external_object_url FROM ${table} WHERE id = ?`).get(row.id)?.external_object_url;
+  const derived = collectionUrlOf(objectUrl || '') || null;
+  // Das Ziel in der Schreibweise der Auswahl (Review): die Uploads suchen die
+  // Liste mit genau dieser URL, und eine Liste ohne Schlussstrich fände sich
+  // unter der abgeleiteten sonst nicht - die Aufgabe bliebe für immer lokal.
+  const trim = (url) => String(url || '').replace(/\/+$/, '');
+  const listUrl = derived && table === 'tasks'
+    ? database.prepare(
+      "SELECT list_url FROM caldav_reminder_selection WHERE account_id = ? AND target_module = 'tasks'"
+    ).all(accountId).map((r) => r.list_url).find((url) => trim(url) === trim(derived)) ?? derived
+    : derived;
+  const target = table === 'tasks'
+    ? `target_caldav_account_id = ${listUrl ? '?' : 'NULL'}, target_caldav_list_url = ${listUrl ? '?' : 'NULL'},`
+    : 'outbound_move = 0, outbound_move_attempts = 0, outbound_move_since = NULL, outbound_move_by = NULL,';
+  const args = table === 'tasks' && listUrl ? [accountId, listUrl] : [];
+  return Number(database.prepare(`
+    UPDATE ${table}
+       SET external_source = 'local', external_uid = NULL, external_account_id = NULL,
+           external_object_url = NULL, ${target}
+           outbound_dirty = 0, outbound_attempts = 0, seen_on_server = 0
+     WHERE id = ? AND external_source = 'caldav'
+  `).run(...args, row.id).changes);
 }
 
 // --------------------------------------------------------
@@ -604,6 +743,9 @@ async function runSync({ createClient: makeClient } = {}) {
   let totalPushed      = 0;
   let successfulAccounts = 0;
 
+  // Standard-Personen je Liste (#1221), einmal je Lauf aufgeloest.
+  const listAssignees = new Map();
+
   for (const account of accounts) {
     try {
       const enabledLists = db.get().prepare(`
@@ -613,9 +755,11 @@ async function runSync({ createClient: makeClient } = {}) {
       // Ohne eingeschaltete Liste gibt es nichts abzurufen. Wartet aber ein
       // Löschauftrag auf eine abgewählte (#1884), fragt der Lauf trotzdem die
       // Auflistung ab: nur sie sagt, ob es die Liste noch gibt.
-      // Dasselbe für einen Umzug in eine abgewählte Liste (#1700).
+      // Dasselbe für einen Umzug in eine abgewählte Liste (#1700) und für einen
+      // Umzug AUS einer Liste dieses Kontos (#1911): sein Warten endet hier.
       const waitsForSelection = todoOutbound.deletionsWaitingForSelection(account.id).length > 0
-        || todoOutbound.movesWaitingForSelection(account.id) > 0;
+        || todoOutbound.movesWaitingForSelection(account.id) > 0
+        || todoOutbound.movesFromAccount(account.id) > 0;
       if (enabledLists.length === 0 && !waitsForSelection) continue;
 
       // Gezielte Anfragen nur an den Server dieses Kontos (`createTodoClient`).
@@ -628,6 +772,10 @@ async function runSync({ createClient: makeClient } = {}) {
           todoOutbound.dropDeletionsOfMissingLists(account.id, serverCals.map((c) => c.url));
           todoOutbound.returnMovesIntoMissingLists(account.id, serverCals.map((c) => c.url));
         }
+        // Umzüge aus den Listen dieses Kontos (#1911): auch ohne eingeschaltete
+        // Liste fällt ein Umzug ohne Ziel, und ein wartender bekommt sein Ende.
+        todoOutbound.releaseStrandedShoppingMoves(account.id);
+        todoOutbound.endWaitingShoppingMoves(account.id, serverCals.map((c) => c.url));
         reportWaitingDeletions(account);
         continue;
       }
@@ -643,11 +791,16 @@ async function runSync({ createClient: makeClient } = {}) {
         );
         continue;
       }
+      // Schreibrechte je Liste für die Zielauswahl der Formulare (#1840).
+      rememberListWritability(account.id, serverCals);
       // Löschaufträge für Listen, die der Server nicht mehr nennt, haben ihr
       // Ziel erreicht (#1884). Vor dem Lesen der Aufträge für den Abruf unten.
       todoOutbound.dropDeletionsOfMissingLists(account.id, serverCals.map((c) => c.url));
       // Ein Umzug in eine Liste, die der Server nicht mehr nennt, geht zurück (#1700).
       todoOutbound.returnMovesIntoMissingLists(account.id, serverCals.map((c) => c.url));
+      // Ein Umzug aus einer Liste, die der Server nicht mehr nennt oder die zu
+      // lange abgeschaltet ist, bekommt sein Ende (#1911).
+      todoOutbound.endWaitingShoppingMoves(account.id, serverCals.map((c) => c.url));
 
       const owner       = db.get().prepare('SELECT id FROM users ORDER BY id ASC LIMIT 1').get();
       const createdBy   = owner ? owner.id : 1;
@@ -777,7 +930,11 @@ async function runSync({ createClient: makeClient } = {}) {
               if (module === 'shopping') {
                 upsertShoppingItem(sel, todo, account.id, obj.url || null);
               } else {
-                const taskId = upsertTask(todo, account.id, createdBy, obj.url || null, { completions: completionTransitions });
+                if (!listAssignees.has(sel.id)) listAssignees.set(sel.id, readDefaultAssignees(db.get(), 'reminderList', sel.id));
+                const taskId = upsertTask(todo, account.id, createdBy, obj.url || null, {
+                  completions: completionTransitions,
+                  defaultAssignees: listAssignees.get(sel.id),
+                });
                 taskRelations.set(todo.uid, {
                   taskId,
                   parentUid: todo.parentUid || null,
@@ -822,6 +979,7 @@ async function runSync({ createClient: makeClient } = {}) {
       if (hasTasks) {
         if (incompleteModules.has('tasks')) {
           log.warn(`Account ${account.id}: a reminder list could not be fetched, skipping task deletion.`);
+          markSeen(db.get(), 'tasks', account.id, seenByModule.tasks);
         } else {
           pruneRemoved(db.get(), 'tasks', account.id, seenByModule.tasks);
         }
@@ -830,6 +988,7 @@ async function runSync({ createClient: makeClient } = {}) {
       if (hasShopping) {
         if (incompleteModules.has('shopping')) {
           log.warn(`Account ${account.id}: a reminder list could not be fetched, skipping shopping deletion.`);
+          markSeen(db.get(), 'shopping_items', account.id, seenByModule.shopping);
         } else {
           // Ein wartender Umzug, dessen Objekt in einer nicht abgerufenen
           // Liste liegt (#1700), ist nicht "auf dem Server gelöscht".
@@ -841,10 +1000,17 @@ async function runSync({ createClient: makeClient } = {}) {
           // der Prune räumte jeden Einkaufsartikel des Kontos ab.
           // Scheitert das Lesen der wartenden Umzüge, geht der Fehler hoch und
           // dieser Lauf prunt gar nicht - es gibt hier keinen leeren Ersatzwert.
+          // Gelesen heisst: als Einkaufsliste gelesen. Eine inzwischen den
+          // Aufgaben zugeordnete Quelle liefert ihre UID nur an die Aufgaben
+          // (#1911), für den Einkauf bleibt sie ungelesen.
           const shielded = seenByModule.shopping.length
-            ? todoOutbound.uidsOfMovesFromUnfetchedLists(account.id, enabledLists.map((s) => s.list_url))
+            ? todoOutbound.uidsOfMovesFromUnfetchedLists(
+              account.id,
+              enabledLists.filter((s) => s.target_module === 'shopping').map((s) => s.list_url),
+            )
             : [];
-          pruneRemoved(db.get(), 'shopping_items', account.id, [...seenByModule.shopping, ...shielded]);
+          // `shielded` hält, ohne als gesehen zu gelten (#1839).
+          pruneRemoved(db.get(), 'shopping_items', account.id, seenByModule.shopping, shielded);
         }
       }
 
@@ -855,7 +1021,8 @@ async function runSync({ createClient: makeClient } = {}) {
       // `complete` heißt: jede Liste dieses Moduls wurde abgerufen. Nur dann ist
       // ein Tombstone ohne auffindbares Objekt wirklich erledigt statt bloß
       // unerreichbar - dieselbe Vorsicht wie beim Prune (#508).
-      // Ein Stoppsignal für Löschen und Ändern aller Module dieses Kontos (#1863).
+      // Ein Stoppsignal für jede schreibende Phase aller Module dieses Kontos
+      // (#1863, #2135): Löschen, Ändern, Aufräumen, Uploads und Mitnahmen.
       const stop = createRefusalStop();
       for (const module of ['tasks', 'shopping']) {
         const complete = !incompleteModules.has(module);
@@ -880,7 +1047,7 @@ async function runSync({ createClient: makeClient } = {}) {
       // der sie nicht importiert hat, und vor den Uploads: eine Zeile mit
       // neuem Ziel in diesem Konto geht so nicht neben ihren Rest.
       try {
-        const cleared = await todoOutbound.releaseLeftoverTodoUploads(client, account.id, { clientFor });
+        const cleared = await todoOutbound.releaseLeftoverTodoUploads(client, account.id, { clientFor, stop });
         if (cleared) log.info(`${cleared} leftover(s) of unconfirmed uploads removed from the server.`);
       } catch (err) {
         log.error(`Removing leftovers of unconfirmed uploads failed for account ${account.id}:`, err.message);
@@ -899,7 +1066,7 @@ async function runSync({ createClient: makeClient } = {}) {
             .filter(([, cal]) => cal)
         );
         const created = await todoOutbound.processPendingCreations(
-          client, account.id, 'tasks', taskLists
+          client, account.id, 'tasks', taskLists, { stop }
         );
         totalPushed += created;
         if (created) log.info(`${created} locally created task(s) uploaded to the server.`);
@@ -921,7 +1088,8 @@ async function runSync({ createClient: makeClient } = {}) {
           client,
           account.id,
           shoppingSelections.map((s) => ({ listUrl: s.list_url, targetListId: s.target_list_id })),
-          shoppingLists
+          shoppingLists,
+          { stop }
         );
         totalPushed += created;
         if (created) log.info(`${created} locally created shopping item(s) uploaded to the server.`);
@@ -945,7 +1113,7 @@ async function runSync({ createClient: makeClient } = {}) {
           account.id,
           targets.map((s) => ({ listUrl: s.list_url, targetListId: s.target_list_id })),
           lists,
-          { clientFor }
+          { clientFor, stop }
         );
         totalPushed += carried;
         if (carried) log.info(`${carried} moved shopping item(s) carried to their new list on the server.`);
