@@ -261,7 +261,7 @@ export function ensureHolidayLayerSelection({ showPublic, showSchool }) {
 }
 
 /**
- * #965: die lokal berechneten Laender (US/CA/GB/AU/NZ, server-seitig ohne
+ * #965: die lokal berechneten Laender (US/CA/GB/AU/NZ/NO, server-seitig ohne
  * Datenquelle fuer Schulferien) tragen `schoolHolidays: false` im Land-
  * Dropdown-Eintrag. Ohne Land oder ohne diesen Eintrag (jedes normale
  * OpenHolidays-Land) gilt die Ebene als verfuegbar - das Flag ist eine

@@ -1305,6 +1305,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   **API:** `PUT /api/v1/push/wall-mode` with `endpoint` and `active` sets or clears the pause for
   that device.
 
+- **Norway in public & school holiday settings.** OpenHolidays does not list Norway. The calendar
+  holiday sync now offers Norway with the twelve statutory public holidays (Lov om helligdager;
+  same Public set as Nager.Date), computed locally like the other #965 countries — no second live
+  holiday API. School holidays stay unavailable for Norway: Udir’s NXR/NSR registers cover schools
+  and municipalities, not skolerute dates; use a calendar subscription for a concrete school route.
+
 - **Wall display shows today's meals, shopping count, housekeeping status, waste pickups, and
   expiring pantry items** (#1903). Paired wall displays previously showed only the calendar,
   tasks, rewards, and weather sections of the today sheet. The dashboard now delivers the five

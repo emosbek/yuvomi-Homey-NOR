@@ -569,6 +569,36 @@ const NZ_PUBLIC_HOLIDAYS = [
   { names: ['Christmas Day', 'Boxing Day'], rule: { type: 'pair', month: 12, day1: 25 } },
 ];
 
+// ---- Norwegen ---------------------------------------------------------------
+// OpenHolidays fuehrt NO nicht. Die zwölf öffentlichen Helligdager folgen
+// Lov 24. februar 1995 nr. 12 om helligdager og helligdagsfred (feste Daten
+// plus Osterversatz) - dieselbe Menge, die Nager.Date als type=Public fuer NO
+// liefert. Bewusst KEIN Live-Abruf von Nager: #965 entscheidet gegen einen
+// zweiten Upstream nur fuer ein fehlendes Land; die Regel-Tabelle ist offline
+// und stabil. KEINE Wochenend-Verschiebung: das norwegische Gesetz kennt keine
+// landesweite Ersatztagsregel - 17. mai bleibt auch an einem Sonntag der 17.
+//
+// Julaften (24.12.) fehlt absichtlich: Nager markiert ihn als Bank, nicht
+// Public, und das Gesetz zaehlt ihn nicht zu den helligdager. Schulferien
+// kommen hier ebenfalls nicht: Udir NXR/NSR liefern Schul-/Kommunenregister,
+// keine Skolerute - pro Kommune/Schuleeier und jahrweise dekretiert, ohne
+// nationalen Formel-Satz (schoolHolidays: false wie bei den anderen lokalen
+// Laendern). ICS-Abo bleibt der Weg fuer eine konkrete Skolerute.
+const NO_PUBLIC_HOLIDAYS = [
+  { names: { NB: '1. nyttårsdag', EN: "New Year's Day" }, rule: { type: 'fixed', month: 1, day: 1 } },
+  { names: { NB: 'Skjærtorsdag', EN: 'Maundy Thursday' }, rule: { type: 'easter', offset: -3 } },
+  { names: { NB: 'Langfredag', EN: 'Good Friday' }, rule: { type: 'easter', offset: -2 } },
+  { names: { NB: '1. påskedag', EN: 'Easter Sunday' }, rule: { type: 'easter', offset: 0 } },
+  { names: { NB: '2. påskedag', EN: 'Easter Monday' }, rule: { type: 'easter', offset: 1 } },
+  { names: { NB: '1. mai', EN: 'Labour Day' }, rule: { type: 'fixed', month: 5, day: 1 } },
+  { names: { NB: 'Kristi himmelfartsdag', EN: 'Ascension Day' }, rule: { type: 'easter', offset: 39 } },
+  { names: { NB: '17. mai', EN: 'Constitution Day' }, rule: { type: 'fixed', month: 5, day: 17 } },
+  { names: { NB: '1. pinsedag', EN: 'Whit Sunday' }, rule: { type: 'easter', offset: 49 } },
+  { names: { NB: '2. pinsedag', EN: 'Whit Monday' }, rule: { type: 'easter', offset: 50 } },
+  { names: { NB: '1. juledag', EN: 'Christmas Day' }, rule: { type: 'fixed', month: 12, day: 25 } },
+  { names: { NB: '2. juledag', EN: "St. Stephen's Day" }, rule: { type: 'fixed', month: 12, day: 26 } },
+];
+
 /**
  * Registry der lokal berechneten Laender. `schoolHolidays: false` in
  * getCountries() wird aus den hier gefuehrten Schluesseln abgeleitet - fuer
@@ -581,6 +611,7 @@ const LOCAL_COUNTRIES = {
   GB: { name: 'United Kingdom', holidays: (subdivision) => gbHolidaysFor(subdivision) },
   AU: { name: 'Australia', holidays: () => AU_PUBLIC_HOLIDAYS },
   NZ: { name: 'New Zealand', holidays: () => NZ_PUBLIC_HOLIDAYS },
+  NO: { name: 'Norway', holidays: () => NO_PUBLIC_HOLIDAYS },
 };
 
 function localHolidayFallback(country, type, year, langCode, subdivision) {

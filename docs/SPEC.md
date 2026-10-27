@@ -1346,18 +1346,22 @@ vs. `CH-BE-EO` French-speaking Bernese Jura). When such a subdivision is configu
 offers an optional school-holiday-group picker; the chosen group filters the overlay to that regime so
 the calendar shows the correct dates instead of the union of both.
 
-**Locally computed countries (#965): United States, Canada, United Kingdom, Australia, New Zealand.**
+**Locally computed countries (#965): United States, Canada, United Kingdom, Australia, New Zealand, Norway.**
 OpenHolidays' own `/Countries` endpoint lists 36 countries, mostly Europe plus Brazil/Mexico/South
-Africa — the United States (the reported gap) is not among them. Rather than add a second live
+Africa — the United States (the reported gap) is not among them, and neither is Norway. Rather than add a second live
 provider for one missing country (a second dependency that can be down or rate-limit independently of
-the first), `server/services/holidays.js` computes five further countries' public holidays locally,
+the first — Nager.Date covers Norway's public set but is not wired as a live dependency), `server/services/holidays.js` computes further countries' public holidays locally,
 in the same shape Brazil's existing local fallback already used (`localHolidayFallback()`, previously
-Brazil-only, now a small declarative rule table shared by all six: `fixed`/`nth-weekday`/`last-weekday`/
+Brazil-only, now a small declarative rule table shared by all seven: `fixed`/`nth-weekday`/`last-weekday`/
 `easter-offset`/`table` rule kinds, plus a weekend-observance policy per entry). `getCountries()` appends
-a synthetic entry for each of these five when OpenHolidays doesn't already list it (an API-listed
+a synthetic entry for each of these when OpenHolidays doesn't already list it (an API-listed
 country always wins over the local entry, never duplicated); each synthetic entry carries
 `schoolHolidays: false`, since none of them has a school-holiday data source — Settings disables and
-explains that toggle for such a country instead of silently syncing nothing. The United Kingdom is
+explains that toggle for such a country instead of silently syncing nothing. Norway's twelve
+helligdager follow Lov om helligdager og helligdagsfred (fixed dates plus Easter offsets) with no
+national substitute-day rule; Christmas Eve is omitted (bank day, not a statutory public holiday).
+Udir's NXR/NSR registers list schools and municipalities, not skolerute dates, so Norwegian school
+holidays stay on the ICS-subscription path until a routable national source exists. The United Kingdom is
 modelled as three complete, independent subdivisions (`GB-ENG`/`GB-SCT`/`GB-NIR`) rather than a
 national baseline plus regional overlay, because the nations' own holiday sets genuinely diverge
 (Scotland has no Easter Monday and its own August date; Northern Ireland adds two holidays) rather
