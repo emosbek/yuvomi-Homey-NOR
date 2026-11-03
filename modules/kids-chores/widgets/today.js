@@ -10,6 +10,12 @@ const ACCENT = '#EA580C';
 /** Match `.module-seal--sm` / `--target-sm` used by other overview widgets. */
 const MARK_SIZE = 28;
 
+function applyAccent(root) {
+  root.style.setProperty('--seal-accent', ACCENT);
+  root.style.setProperty('--widget-accent', ACCENT);
+  root.style.setProperty('--active-module-accent', ACCENT);
+}
+
 function paintIcons(root) {
   if (window.lucide) window.lucide.createIcons({ el: root });
 }
@@ -63,10 +69,11 @@ export async function renderWidget(container, { signal } = {}) {
 
     const open = data.open || [];
     container.replaceChildren();
+    applyAccent(container);
     container.append(header(title, open.length));
 
     const body = document.createElement('div');
-    body.className = 'kc-widget';
+    body.className = 'widget__body kc-widget';
 
     if (!data.items?.length) {
       const empty = document.createElement('div');
@@ -112,6 +119,7 @@ export async function renderWidget(container, { signal } = {}) {
         if (data.access === 'write') {
           const btn = document.createElement('button');
           btn.type = 'button';
+          /* Inset well inside the overview card — not a nested .card (Kasten-in-Kasten). */
           btn.className = 'kc-widget__chore';
           const label = document.createElement('span');
           label.className = 'kc-widget__chore-title';

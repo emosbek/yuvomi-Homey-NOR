@@ -5,6 +5,8 @@ import { renderPageBody, renderPageHeader, renderPageSection, renderPageTitle } 
 import { showToast } from '/utils/toast-show.js';
 import { choresApi, progressMark } from './browser.js';
 
+const ACCENT = '#EA580C';
+
 function paintIcons(root) {
   if (window.lucide) window.lucide.createIcons({ el: root });
 }
@@ -27,6 +29,8 @@ function shell() {
 export async function render(container, context) {
   const signal = context?.signal;
   container.replaceChildren();
+  container.style.setProperty('--seal-accent', ACCENT);
+  container.style.setProperty('--active-module-accent', ACCENT);
   container.insertAdjacentHTML('beforeend', shell());
   paintIcons(container);
 
@@ -103,13 +107,14 @@ export async function render(container, context) {
       const li = document.createElement('li');
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = `kc-chore kc-widget__chore${item.done ? ' kc-chore--done' : ''}`;
+      /* Module page sits on the grouped stage → real cards are correct here. */
+      btn.className = `card card--padded card--interactive kc-chore${item.done ? ' kc-chore--done' : ''}`;
       btn.disabled = item.done || data.access !== 'write';
       const title = document.createElement('span');
-      title.className = 'kc-widget__chore-title';
+      title.className = 'kc-chore__title';
       title.textContent = item.title;
       const pts = document.createElement('span');
-      pts.className = 'kc-chore__points kc-widget__chore-points';
+      pts.className = 'kc-chore__points';
       pts.textContent = t('extensions.kids-chores.page.points', { count: item.points });
       btn.append(title, pts);
       if (!item.done && data.access === 'write') {
