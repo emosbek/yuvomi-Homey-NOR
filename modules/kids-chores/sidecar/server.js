@@ -335,16 +335,8 @@ export function createKidsChoresHandler({
           const chore = completeMeta.chore;
           const settings = store.snapshot().settings;
           const result = await postWebhook(chore.webhookUrl, {
-            event: 'kids_chores.chore_completed',
-            module: 'kids-chores',
-            done: true,
             state: 'yes',
-            date: localDateKey(settings.timezone || 'Europe/Oslo', now()),
-            choreId: chore.id,
-            title: chore.title,
-            points: chore.points,
-            timezone: settings.timezone,
-            triggeredBy: session?.displayName || session?.id || null,
+            done: true,
           });
           choreWebhookSent = result.ok === true;
         }
@@ -373,21 +365,12 @@ export function createKidsChoresHandler({
         if (session.role !== 'admin') throw new HttpError(403, 'forbidden', 'Admin only.');
         const { resetTargets } = await store.resetToday(now());
         const settings = store.snapshot().settings;
-        const dateKey = localDateKey(settings.timezone || 'Europe/Oslo', now());
         let resetWebhooksSent = 0;
         for (const chore of resetTargets) {
           if (!chore.resetWebhookUrl) continue;
           const result = await postWebhook(chore.resetWebhookUrl, {
-            event: 'kids_chores.chore_reset',
-            module: 'kids-chores',
-            done: false,
             state: 'no',
-            date: dateKey,
-            choreId: chore.id,
-            title: chore.title,
-            points: chore.points,
-            timezone: settings.timezone,
-            triggeredBy: session?.displayName || session?.id || null,
+            done: false,
           });
           if (result.ok) resetWebhooksSent += 1;
         }
@@ -485,13 +468,15 @@ export function createKidsChoresHandler({
         if (session.role !== 'admin') throw new HttpError(403, 'forbidden', 'Admin only.');
         const settings = store.snapshot().settings;
         if (!settings.webhookUrl) throw new HttpError(400, 'webhook', 'No webhook URL configured.');
-        const result = await postWebhook(settings.webhookUrl, {
-          event: 'kids_chores.test',
-          module: 'kids-chores',
-          date: localDateKey(settings.timezone, now()),
-        });
+        const body = await readBody(req);
+        const wantNo = String(body?.state || '').toLowerCase() === 'no'
+          || body?.done === false;
+        const payload = wantNo
+          ? { state: 'no', done: false }
+          : { state: 'yes', done: true };
+        const result = await postWebhook(settings.webhookUrl, payload);
         if (!result.ok) throw new HttpError(502, 'webhook', 'Webhook did not accept the test.');
-        reply(req, res, 200, { ok: true });
+        reply(req, res, 200, { ok: true, payload });
         return;
       }
 

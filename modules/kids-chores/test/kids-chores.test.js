@@ -323,8 +323,7 @@ test('API fires reset (No) webhooks when admin resets today', async () => {
     assert.equal(done.status, 200, JSON.stringify(done.body));
     assert.equal(done.body.choreWebhookSent, true);
     assert.equal(hooks[0].path, '/yes');
-    assert.equal(hooks[0].body.state, 'yes');
-    assert.equal(hooks[0].body.done, true);
+    assert.deepEqual(hooks[0].body, { state: 'yes', done: true });
 
     const reset = await call(base, '/api/extensions/kids-chores/reset-today', {
       method: 'POST',
@@ -338,10 +337,65 @@ test('API fires reset (No) webhooks when admin resets today', async () => {
     assert.equal(reset.body.resetWebhooksSent, 1);
     assert.equal(hooks.length, 2);
     assert.equal(hooks[1].path, '/no');
-    assert.equal(hooks[1].body.event, 'kids_chores.chore_reset');
-    assert.equal(hooks[1].body.state, 'no');
-    assert.equal(hooks[1].body.done, false);
-    assert.equal(hooks[1].body.choreId, chore.id);
+    assert.deepEqual(hooks[1].body, { state: 'no', done: false });
+
+    await close(server);
+  } finally {
+    await close(me);
+    await close(webhook);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('API test-webhook sends yes/no payloads', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'kc-'));
+  const hooks = [];
+  const webhook = http.createServer((req, res) => {
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', () => {
+      hooks.push(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+      res.writeHead(200);
+      res.end('ok');
+    });
+  });
+  const me = startMe((_req, res) => admin(res));
+  try {
+    const meUrl = await listen(me);
+    const hookUrl = await listen(webhook);
+    const server = createKidsChoresServer({ dataDir: dir, yuvomiUrl: meUrl });
+    const base = await listen(server);
+    const first = await call(base, '/api/extensions/kids-chores/today', { cookie: 'yuvomi.sid=ok' });
+    const jar = `yuvomi.sid=ok; ${first.cookie}`;
+    const csrf = first.body.csrfToken;
+
+    const settings = await call(base, '/api/extensions/kids-chores/settings', {
+      method: 'PUT',
+      cookie: jar,
+      csrf,
+      json: { webhookUrl: `${hookUrl}/reward` },
+    });
+    assert.equal(settings.status, 200, JSON.stringify(settings.body));
+
+    const yes = await call(base, '/api/extensions/kids-chores/test-webhook', {
+      method: 'POST',
+      cookie: jar,
+      csrf,
+      json: { state: 'yes' },
+    });
+    assert.equal(yes.status, 200, JSON.stringify(yes.body));
+    assert.deepEqual(yes.body.payload, { state: 'yes', done: true });
+    assert.deepEqual(hooks[0], { state: 'yes', done: true });
+
+    const no = await call(base, '/api/extensions/kids-chores/test-webhook', {
+      method: 'POST',
+      cookie: jar,
+      csrf,
+      json: { state: 'no' },
+    });
+    assert.equal(no.status, 200, JSON.stringify(no.body));
+    assert.deepEqual(no.body.payload, { state: 'no', done: false });
+    assert.deepEqual(hooks[1], { state: 'no', done: false });
 
     await close(server);
   } finally {
@@ -406,9 +460,7 @@ test('API fires per-chore webhook when a chore is completed', async () => {
     assert.equal(done.body.choreWebhookSent, true);
     assert.equal(hooks.length, 1);
     assert.equal(hooks[0].path, '/dog');
-    assert.equal(hooks[0].body.event, 'kids_chores.chore_completed');
-    assert.equal(hooks[0].body.title, 'Walk the dog');
-    assert.equal(hooks[0].body.choreId, chore.id);
+    assert.deepEqual(hooks[0].body, { state: 'yes', done: true });
 
     const again = await call(base, '/api/extensions/kids-chores/complete', {
       method: 'POST',

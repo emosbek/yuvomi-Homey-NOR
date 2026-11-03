@@ -270,15 +270,15 @@ export async function render(container, { section, signal }) {
       }
     }, { signal });
 
-    const test = document.createElement('button');
-    test.type = 'button';
-    test.className = 'btn';
-    test.textContent = t('extensions.kids-chores.settings.testWebhook');
-    test.disabled = !settings.webhookSet;
-    test.addEventListener('click', async () => {
-      test.disabled = true;
+    async function sendTestWebhook(state, button) {
+      button.disabled = true;
       try {
-        const next = await choresApi('/test-webhook', { method: 'POST', body: {}, csrf, signal });
+        const next = await choresApi('/test-webhook', {
+          method: 'POST',
+          body: { state },
+          csrf,
+          signal,
+        });
         if (gone) return;
         csrf = next.csrfToken || csrf;
         showToast(t('extensions.kids-chores.settings.webhookOk'), 'success');
@@ -286,9 +286,27 @@ export async function render(container, { section, signal }) {
         if (err.csrfToken) csrf = err.csrfToken;
         showToast(err.message || t('extensions.kids-chores.reason.invalid'), 'danger');
       } finally {
-        if (!gone) test.disabled = !settings.webhookSet;
+        if (!gone) button.disabled = !settings.webhookSet;
       }
-    }, { signal });
+    }
+
+    const testYes = document.createElement('button');
+    testYes.type = 'button';
+    testYes.className = 'btn';
+    testYes.textContent = t('extensions.kids-chores.settings.testWebhookYes');
+    testYes.title = t('extensions.kids-chores.settings.testWebhookYesTitle');
+    testYes.setAttribute('aria-label', t('extensions.kids-chores.settings.testWebhookYesTitle'));
+    testYes.disabled = !settings.webhookSet;
+    testYes.addEventListener('click', () => sendTestWebhook('yes', testYes), { signal });
+
+    const testNo = document.createElement('button');
+    testNo.type = 'button';
+    testNo.className = 'btn';
+    testNo.textContent = t('extensions.kids-chores.settings.testWebhookNo');
+    testNo.title = t('extensions.kids-chores.settings.testWebhookNoTitle');
+    testNo.setAttribute('aria-label', t('extensions.kids-chores.settings.testWebhookNoTitle'));
+    testNo.disabled = !settings.webhookSet;
+    testNo.addEventListener('click', () => sendTestWebhook('no', testNo), { signal });
 
     const reset = document.createElement('button');
     reset.type = 'button';
@@ -314,7 +332,7 @@ export async function render(container, { section, signal }) {
       }
     }, { signal });
 
-    settingsForm.append(actionsRow(save, test, reset));
+    settingsForm.append(actionsRow(save, testYes, testNo, reset));
   }
 
   async function persistOrder(listEl) {
