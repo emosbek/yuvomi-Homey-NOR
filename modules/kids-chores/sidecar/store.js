@@ -317,6 +317,18 @@ export function createStore(dir) {
         return pruneOld({ ...current, completions, goals });
       });
     },
+    /** Clear today's completions and goal flags so chores reopen before midnight. */
+    resetToday(at = new Date()) {
+      return mutate((current) => {
+        const tz = current.settings.timezone || 'Europe/Oslo';
+        const dateKey = localDateKey(tz, at);
+        const completions = { ...current.completions };
+        delete completions[dateKey];
+        const goals = { ...current.goals };
+        delete goals[dateKey];
+        return pruneOld({ ...current, completions, goals });
+      });
+    },
     markGoal(dateKey, flags) {
       return mutate((current) => pruneOld({
         ...current,

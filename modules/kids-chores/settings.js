@@ -246,7 +246,30 @@ export async function render(container, { section, signal }) {
       }
     }, { signal });
 
-    settingsForm.append(actionsRow(save, test));
+    const reset = document.createElement('button');
+    reset.type = 'button';
+    reset.className = 'btn';
+    reset.textContent = t('extensions.kids-chores.settings.resetToday');
+    reset.title = t('extensions.kids-chores.settings.resetTodayHint');
+    reset.addEventListener('click', async () => {
+      if (!window.confirm(t('extensions.kids-chores.settings.resetTodayConfirm'))) return;
+      reset.disabled = true;
+      try {
+        const next = await choresApi('/reset-today', { method: 'POST', body: {}, csrf, signal });
+        if (gone) return;
+        csrf = next.csrfToken || csrf;
+        showToast({ message: t('extensions.kids-chores.settings.resetTodayDone'), variant: 'success' });
+        if (next.settings) paintSettings(next.settings);
+        if (next.chores) paintChores(next.chores);
+      } catch (err) {
+        if (err.csrfToken) csrf = err.csrfToken;
+        showToast({ message: err.message, variant: 'danger' });
+      } finally {
+        if (!gone) reset.disabled = false;
+      }
+    }, { signal });
+
+    settingsForm.append(actionsRow(save, test, reset));
   }
 
   async function persistOrder(listEl) {

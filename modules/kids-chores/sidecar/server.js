@@ -344,6 +344,20 @@ export function createKidsChoresHandler({
         return;
       }
 
+      if (req.method === 'POST' && sub === '/reset-today') {
+        if (session.role !== 'admin') throw new HttpError(403, 'forbidden', 'Admin only.');
+        await store.resetToday(now());
+        reply(req, res, 200, {
+          ok: true,
+          ...todayBundle(store, now()),
+          access,
+          role: session.role,
+          chores: store.listChores(),
+          settings: store.publicSettings(),
+        });
+        return;
+      }
+
       if (req.method === 'POST' && sub === '/chores') {
         if (session.role !== 'admin') throw new HttpError(403, 'forbidden', 'Admin only.');
         const body = await readBody(req);

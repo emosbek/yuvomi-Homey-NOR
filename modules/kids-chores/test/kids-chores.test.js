@@ -158,6 +158,42 @@ test('API: admin creates chore, member completes it, goal fires webhook once', a
   }
 });
 
+test('API resets today’s completions before midnight', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'kc-'));
+  const me = startMe((_req, res) => admin(res));
+  try {
+    const meUrl = await listen(me);
+    const fixed = new Date('2026-11-03T10:00:00Z');
+    const server = createKidsChoresServer({ dataDir: dir, yuvomiUrl: meUrl, now: () => fixed });
+    const base = await listen(server);
+    const first = await call(base, '/api/extensions/kids-chores/today', { cookie: 'yuvomi.sid=ok' });
+    const jar = `yuvomi.sid=ok; ${first.cookie}`;
+    const csrf = first.body.csrfToken;
+
+    const created = await call(base, '/api/extensions/kids-chores/chores', {
+      method: 'POST', cookie: jar, csrf, json: { title: 'Wash', points: 3, days: [1, 2, 3, 4, 5] },
+    });
+    const choreId = created.body.chores[0].id;
+    const done = await call(base, '/api/extensions/kids-chores/complete', {
+      method: 'POST', cookie: jar, csrf, json: { id: choreId },
+    });
+    assert.equal(done.body.open.length, 0);
+
+    const reset = await call(base, '/api/extensions/kids-chores/reset-today', {
+      method: 'POST', cookie: jar, csrf, json: {},
+    });
+    assert.equal(reset.status, 200, JSON.stringify(reset.body));
+    assert.equal(reset.body.open.length, 1);
+    assert.equal(reset.body.earned, 0);
+    assert.equal(reset.body.goalReached, false);
+
+    await close(server);
+  } finally {
+    await close(me);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('API reorders chores and updates a chore', async () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'kc-'));
   const me = startMe((_req, res) => admin(res));
