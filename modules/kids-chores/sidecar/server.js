@@ -322,15 +322,38 @@ export function createKidsChoresHandler({
         const body = await readBody(req);
         const id = String(body?.id || '');
         if (!ID_RE.test(id)) throw new HttpError(400, 'invalid', 'Chore id is invalid.');
+        let completeMeta;
         try {
-          await store.completeChore(id, session.id, now());
+          completeMeta = await store.completeChore(id, session.id, now());
         } catch (err) {
           if (err.code === 'missing') throw new HttpError(404, 'missing', err.message);
           if (err.code === 'day') throw new HttpError(400, 'day', err.message);
           throw err;
         }
+        let choreWebhookSent = false;
+        if (completeMeta?.newlyCompleted && completeMeta.chore?.webhookUrl) {
+          const chore = completeMeta.chore;
+          const settings = store.snapshot().settings;
+          const result = await postWebhook(chore.webhookUrl, {
+            event: 'kids_chores.chore_completed',
+            module: 'kids-chores',
+            date: localDateKey(settings.timezone || 'Europe/Oslo', now()),
+            choreId: chore.id,
+            title: chore.title,
+            points: chore.points,
+            timezone: settings.timezone,
+            triggeredBy: session?.displayName || session?.id || null,
+          });
+          choreWebhookSent = result.ok === true;
+        }
         const bundle = await maybeFireGoal(store, session, now());
-        reply(req, res, 200, { ok: true, ...bundle, access, role: session.role });
+        reply(req, res, 200, {
+          ok: true,
+          ...bundle,
+          choreWebhookSent,
+          access,
+          role: session.role,
+        });
         return;
       }
 

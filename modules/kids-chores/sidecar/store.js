@@ -39,6 +39,17 @@ function cleanDays(days) {
   return out.length ? out : [1, 2, 3, 4, 5];
 }
 
+function cleanChoreWebhook(value) {
+  if (value == null || value === '') return null;
+  const normalized = normalizeWebhookUrl(String(value));
+  if (!normalized) {
+    const err = new Error('Webhook URL is invalid.');
+    err.code = 'invalid';
+    throw err;
+  }
+  return normalized;
+}
+
 function cleanChore(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const title = String(raw.title ?? '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, 80);
@@ -52,6 +63,7 @@ function cleanChore(raw) {
     days: cleanDays(raw.days),
     active: raw.active !== false,
     sort: Number.isFinite(Number(raw.sort)) ? Number(raw.sort) : 0,
+    webhookUrl: cleanChoreWebhook(raw.webhookUrl),
   };
 }
 
@@ -298,6 +310,7 @@ export function createStore(dir) {
       });
     },
     completeChore(id, userId, at = new Date()) {
+      let meta = { newlyCompleted: false, chore: null };
       return mutate((current) => {
         const chore = current.chores.find((c) => c.id === id && c.active !== false);
         if (!chore) {
@@ -314,13 +327,15 @@ export function createStore(dir) {
         }
         const dateKey = localDateKey(tz, at);
         const dayMap = { ...(current.completions[dateKey] || {}) };
+        meta = { newlyCompleted: false, chore: { ...chore, days: [...chore.days] } };
         if (dayMap[id]) return current;
         dayMap[id] = { at: at.toISOString(), by: userId };
+        meta = { newlyCompleted: true, chore: { ...chore, days: [...chore.days] } };
         return pruneOld({
           ...current,
           completions: { ...current.completions, [dateKey]: dayMap },
         });
-      });
+      }).then(() => meta);
     },
     uncompleteChore(id, at = new Date()) {
       return mutate((current) => {

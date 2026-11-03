@@ -92,6 +92,20 @@ function dayMeta(chore) {
     .join(', ');
 }
 
+function choreWebhookField(value = '') {
+  const input = document.createElement('input');
+  input.type = 'url';
+  input.placeholder = t('extensions.kids-chores.settings.choreWebhookPlaceholder');
+  input.value = value || '';
+  input.autocomplete = 'off';
+  input.spellcheck = false;
+  return formField(
+    t('extensions.kids-chores.settings.choreWebhook'),
+    input,
+    { hint: t('extensions.kids-chores.settings.choreWebhookHint') },
+  );
+}
+
 export async function render(container, { section, signal }) {
   if (section !== 'household') {
     container.replaceChildren();
@@ -387,7 +401,12 @@ export async function render(container, { section, signal }) {
         name.textContent = chore.title;
         const meta = document.createElement('div');
         meta.className = 'kc-chore-row__meta';
-        meta.textContent = `${t('extensions.kids-chores.page.points', { count: chore.points })} · ${dayMeta(chore)}`;
+        const bits = [
+          t('extensions.kids-chores.page.points', { count: chore.points }),
+          dayMeta(chore),
+        ];
+        if (chore.webhookUrl) bits.push(t('extensions.kids-chores.settings.choreHasWebhook'));
+        meta.textContent = bits.filter(Boolean).join(' · ');
         left.append(name, meta);
 
         const actions = document.createElement('div');
@@ -459,6 +478,8 @@ export async function render(container, { section, signal }) {
           pointsInput.min = '0';
           pointsInput.max = '1000';
           pointsInput.value = String(chore.points);
+          const webhookField = choreWebhookField(chore.webhookUrl || '');
+          const webhookInput = webhookField.querySelector('input');
           const days = daysPicker(chore.days);
           const saveEdit = document.createElement('button');
           saveEdit.type = 'button';
@@ -481,6 +502,7 @@ export async function render(container, { section, signal }) {
                   title: titleInput.value,
                   points: Number(pointsInput.value),
                   days: readDays(days),
+                  webhookUrl: webhookInput.value.trim(),
                 },
                 csrf,
                 signal,
@@ -499,6 +521,7 @@ export async function render(container, { section, signal }) {
           editor.append(
             formField(t('extensions.kids-chores.settings.choreTitle'), titleInput),
             formField(t('extensions.kids-chores.settings.chorePoints'), pointsInput),
+            webhookField,
             (() => {
               const field = document.createElement('div');
               field.className = 'form-field';
@@ -552,6 +575,9 @@ export async function render(container, { section, signal }) {
     points.value = '1';
     points.inputMode = 'numeric';
 
+    const webhookField = choreWebhookField('');
+    const webhookInput = webhookField.querySelector('input');
+
     const days = daysPicker([1, 2, 3, 4, 5]);
     const daysField = document.createElement('div');
     daysField.className = 'form-field';
@@ -573,6 +599,7 @@ export async function render(container, { section, signal }) {
             title: name.value,
             points: Number(points.value),
             days: readDays(days),
+            webhookUrl: webhookInput.value.trim(),
           },
           csrf,
           signal,
@@ -580,6 +607,7 @@ export async function render(container, { section, signal }) {
         if (gone) return;
         csrf = next.csrfToken || csrf;
         name.value = '';
+        webhookInput.value = '';
         paintChores(next.chores || []);
         showToast(t('extensions.kids-chores.settings.added'), 'success');
       } catch (err) {
@@ -593,6 +621,7 @@ export async function render(container, { section, signal }) {
       addTitle,
       formField(t('extensions.kids-chores.settings.choreTitle'), name),
       formField(t('extensions.kids-chores.settings.chorePoints'), points),
+      webhookField,
       daysField,
       actionsRow(add),
     );
