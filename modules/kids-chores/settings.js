@@ -92,18 +92,19 @@ function dayMeta(chore) {
     .join(', ');
 }
 
-function choreWebhookField(value = '') {
+function choreWebhookField({
+  value = '',
+  labelKey = 'extensions.kids-chores.settings.choreWebhook',
+  placeholderKey = 'extensions.kids-chores.settings.choreWebhookPlaceholder',
+  hintKey = 'extensions.kids-chores.settings.choreWebhookHint',
+} = {}) {
   const input = document.createElement('input');
   input.type = 'url';
-  input.placeholder = t('extensions.kids-chores.settings.choreWebhookPlaceholder');
+  input.placeholder = t(placeholderKey);
   input.value = value || '';
   input.autocomplete = 'off';
   input.spellcheck = false;
-  return formField(
-    t('extensions.kids-chores.settings.choreWebhook'),
-    input,
-    { hint: t('extensions.kids-chores.settings.choreWebhookHint') },
-  );
+  return formField(t(labelKey), input, { hint: t(hintKey) });
 }
 
 export async function render(container, { section, signal }) {
@@ -405,7 +406,9 @@ export async function render(container, { section, signal }) {
           t('extensions.kids-chores.page.points', { count: chore.points }),
           dayMeta(chore),
         ];
-        if (chore.webhookUrl) bits.push(t('extensions.kids-chores.settings.choreHasWebhook'));
+        if (chore.webhookUrl || chore.resetWebhookUrl) {
+          bits.push(t('extensions.kids-chores.settings.choreHasWebhook'));
+        }
         meta.textContent = bits.filter(Boolean).join(' · ');
         left.append(name, meta);
 
@@ -478,8 +481,15 @@ export async function render(container, { section, signal }) {
           pointsInput.min = '0';
           pointsInput.max = '1000';
           pointsInput.value = String(chore.points);
-          const webhookField = choreWebhookField(chore.webhookUrl || '');
+          const webhookField = choreWebhookField({ value: chore.webhookUrl || '' });
           const webhookInput = webhookField.querySelector('input');
+          const resetWebhookField = choreWebhookField({
+            value: chore.resetWebhookUrl || '',
+            labelKey: 'extensions.kids-chores.settings.choreResetWebhook',
+            placeholderKey: 'extensions.kids-chores.settings.choreResetWebhookPlaceholder',
+            hintKey: 'extensions.kids-chores.settings.choreResetWebhookHint',
+          });
+          const resetWebhookInput = resetWebhookField.querySelector('input');
           const days = daysPicker(chore.days);
           const saveEdit = document.createElement('button');
           saveEdit.type = 'button';
@@ -503,6 +513,7 @@ export async function render(container, { section, signal }) {
                   points: Number(pointsInput.value),
                   days: readDays(days),
                   webhookUrl: webhookInput.value.trim(),
+                  resetWebhookUrl: resetWebhookInput.value.trim(),
                 },
                 csrf,
                 signal,
@@ -522,6 +533,7 @@ export async function render(container, { section, signal }) {
             formField(t('extensions.kids-chores.settings.choreTitle'), titleInput),
             formField(t('extensions.kids-chores.settings.chorePoints'), pointsInput),
             webhookField,
+            resetWebhookField,
             (() => {
               const field = document.createElement('div');
               field.className = 'form-field';
@@ -575,8 +587,14 @@ export async function render(container, { section, signal }) {
     points.value = '1';
     points.inputMode = 'numeric';
 
-    const webhookField = choreWebhookField('');
+    const webhookField = choreWebhookField({});
     const webhookInput = webhookField.querySelector('input');
+    const resetWebhookField = choreWebhookField({
+      labelKey: 'extensions.kids-chores.settings.choreResetWebhook',
+      placeholderKey: 'extensions.kids-chores.settings.choreResetWebhookPlaceholder',
+      hintKey: 'extensions.kids-chores.settings.choreResetWebhookHint',
+    });
+    const resetWebhookInput = resetWebhookField.querySelector('input');
 
     const days = daysPicker([1, 2, 3, 4, 5]);
     const daysField = document.createElement('div');
@@ -600,6 +618,7 @@ export async function render(container, { section, signal }) {
             points: Number(points.value),
             days: readDays(days),
             webhookUrl: webhookInput.value.trim(),
+            resetWebhookUrl: resetWebhookInput.value.trim(),
           },
           csrf,
           signal,
@@ -608,6 +627,7 @@ export async function render(container, { section, signal }) {
         csrf = next.csrfToken || csrf;
         name.value = '';
         webhookInput.value = '';
+        resetWebhookInput.value = '';
         paintChores(next.chores || []);
         showToast(t('extensions.kids-chores.settings.added'), 'success');
       } catch (err) {
@@ -622,6 +642,7 @@ export async function render(container, { section, signal }) {
       formField(t('extensions.kids-chores.settings.choreTitle'), name),
       formField(t('extensions.kids-chores.settings.chorePoints'), points),
       webhookField,
+      resetWebhookField,
       daysField,
       actionsRow(add),
     );

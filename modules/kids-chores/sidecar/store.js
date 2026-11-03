@@ -64,6 +64,7 @@ function cleanChore(raw) {
     active: raw.active !== false,
     sort: Number.isFinite(Number(raw.sort)) ? Number(raw.sort) : 0,
     webhookUrl: cleanChoreWebhook(raw.webhookUrl),
+    resetWebhookUrl: cleanChoreWebhook(raw.resetWebhookUrl),
   };
 }
 
@@ -352,17 +353,25 @@ export function createStore(dir) {
         return pruneOld({ ...current, completions, goals });
       });
     },
-    /** Clear today's completions and goal flags so chores reopen before midnight. */
+    /**
+     * Clear today's completions and goal flags so chores reopen before midnight.
+     * Returns chores that were done today and have a reset webhook (Homey Yes→No).
+     */
     resetToday(at = new Date()) {
+      let resetTargets = [];
       return mutate((current) => {
         const tz = current.settings.timezone || 'Europe/Oslo';
         const dateKey = localDateKey(tz, at);
+        const dayMap = current.completions[dateKey] || {};
+        resetTargets = current.chores
+          .filter((c) => c.active !== false && dayMap[c.id] && c.resetWebhookUrl)
+          .map((c) => ({ ...c, days: [...c.days] }));
         const completions = { ...current.completions };
         delete completions[dateKey];
         const goals = { ...current.goals };
         delete goals[dateKey];
         return pruneOld({ ...current, completions, goals });
-      });
+      }).then(() => ({ resetTargets }));
     },
     markGoal(dateKey, flags) {
       return mutate((current) => pruneOld({

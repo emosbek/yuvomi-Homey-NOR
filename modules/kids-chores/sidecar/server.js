@@ -337,6 +337,8 @@ export function createKidsChoresHandler({
           const result = await postWebhook(chore.webhookUrl, {
             event: 'kids_chores.chore_completed',
             module: 'kids-chores',
+            done: true,
+            state: 'yes',
             date: localDateKey(settings.timezone || 'Europe/Oslo', now()),
             choreId: chore.id,
             title: chore.title,
@@ -369,7 +371,26 @@ export function createKidsChoresHandler({
 
       if (req.method === 'POST' && sub === '/reset-today') {
         if (session.role !== 'admin') throw new HttpError(403, 'forbidden', 'Admin only.');
-        await store.resetToday(now());
+        const { resetTargets } = await store.resetToday(now());
+        const settings = store.snapshot().settings;
+        const dateKey = localDateKey(settings.timezone || 'Europe/Oslo', now());
+        let resetWebhooksSent = 0;
+        for (const chore of resetTargets) {
+          if (!chore.resetWebhookUrl) continue;
+          const result = await postWebhook(chore.resetWebhookUrl, {
+            event: 'kids_chores.chore_reset',
+            module: 'kids-chores',
+            done: false,
+            state: 'no',
+            date: dateKey,
+            choreId: chore.id,
+            title: chore.title,
+            points: chore.points,
+            timezone: settings.timezone,
+            triggeredBy: session?.displayName || session?.id || null,
+          });
+          if (result.ok) resetWebhooksSent += 1;
+        }
         reply(req, res, 200, {
           ok: true,
           ...todayBundle(store, now()),
@@ -377,6 +398,8 @@ export function createKidsChoresHandler({
           role: session.role,
           chores: store.listChores(),
           settings: store.publicSettings({ includeSecrets: true }),
+          resetWebhooksSent,
+          resetWebhookTargets: resetTargets.length,
         });
         return;
       }
