@@ -7,6 +7,8 @@ import { choresApi, progressMark } from '../browser.js';
 const STYLE = '/api/v1/modules/assets/kids-chores/style.css';
 const PATH = '/m/kids-chores';
 const ACCENT = '#EA580C';
+/** Match `.module-seal--sm` / `--target-sm` used by other overview widgets. */
+const MARK_SIZE = 28;
 
 function paintIcons(root) {
   if (window.lucide) window.lucide.createIcons({ el: root });
@@ -79,32 +81,45 @@ export async function renderWidget(container, { signal } = {}) {
       return;
     }
 
-    const row = document.createElement('div');
-    row.className = 'kc-widget__body';
+    const progress = document.createElement('div');
+    progress.className = 'kc-widget__progress';
     const mark = document.createElement('div');
+    mark.className = 'kc-widget__mark';
     mark.insertAdjacentHTML('beforeend', progressMark({
       percent: data.percent,
       icon: data.progressIcon || 'sun',
-      size: 64,
+      size: MARK_SIZE,
     }));
-    row.append(mark);
+    const score = document.createElement('p');
+    score.className = 'kc-widget__score';
+    score.textContent = t('extensions.kids-chores.page.score', {
+      earned: data.earned,
+      goal: data.goal,
+    });
+    progress.append(mark, score);
+    body.append(progress);
 
     if (data.allDone) {
       const congrats = document.createElement('p');
       congrats.className = 'kc-widget__congrats';
       congrats.textContent = data.congratsMessage
         || t('extensions.kids-chores.page.defaultCongrats');
-      row.append(congrats);
+      body.append(congrats);
     } else {
-      const list = document.createElement('ul');
+      const list = document.createElement('div');
       list.className = 'kc-widget__list';
       for (const item of open) {
-        const li = document.createElement('li');
-        li.className = 'kc-widget__item';
         if (data.access === 'write') {
           const btn = document.createElement('button');
           btn.type = 'button';
-          btn.textContent = item.title;
+          btn.className = 'kc-widget__chore';
+          const label = document.createElement('span');
+          label.className = 'kc-widget__chore-title';
+          label.textContent = item.title;
+          const pts = document.createElement('span');
+          pts.className = 'kc-widget__chore-points';
+          pts.textContent = t('extensions.kids-chores.page.points', { count: item.points });
+          btn.append(label, pts);
           btn.addEventListener('click', async () => {
             btn.disabled = true;
             try {
@@ -129,22 +144,17 @@ export async function renderWidget(container, { signal } = {}) {
               showToast({ message: err.message, variant: 'danger' });
             }
           }, { signal });
-          li.append(btn);
+          list.append(btn);
         } else {
-          li.textContent = item.title;
+          const row = document.createElement('div');
+          row.className = 'kc-widget__chore kc-widget__chore--static';
+          row.textContent = item.title;
+          list.append(row);
         }
-        list.append(li);
       }
-      row.append(list);
+      body.append(list);
     }
 
-    const score = document.createElement('p');
-    score.className = 'kc-progress__label';
-    score.textContent = t('extensions.kids-chores.page.score', {
-      earned: data.earned,
-      goal: data.goal,
-    });
-    body.append(row, score);
     container.append(body);
     paintIcons(container);
   }

@@ -260,6 +260,23 @@ export function createStore(dir) {
         chores: current.chores.filter((c) => c.id !== id),
       }));
     },
+    reorderChores(ids) {
+      return mutate((current) => {
+        if (!Array.isArray(ids) || !ids.length) {
+          const err = new Error('Order is invalid.');
+          err.code = 'invalid';
+          throw err;
+        }
+        const byId = new Map(current.chores.map((c) => [c.id, c]));
+        if (ids.length !== byId.size || ids.some((id) => !byId.has(id))) {
+          const err = new Error('Order is invalid.');
+          err.code = 'invalid';
+          throw err;
+        }
+        const chores = ids.map((id, index) => ({ ...byId.get(id), sort: index }));
+        return pruneOld({ ...current, chores });
+      });
+    },
     completeChore(id, userId, at = new Date()) {
       return mutate((current) => {
         const chore = current.chores.find((c) => c.id === id && c.active !== false);

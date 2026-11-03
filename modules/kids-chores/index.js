@@ -103,12 +103,13 @@ export async function render(container, context) {
       const li = document.createElement('li');
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = `kc-chore${item.done ? ' kc-chore--done' : ''}`;
+      btn.className = `kc-chore kc-widget__chore${item.done ? ' kc-chore--done' : ''}`;
       btn.disabled = item.done || data.access !== 'write';
       const title = document.createElement('span');
+      title.className = 'kc-widget__chore-title';
       title.textContent = item.title;
       const pts = document.createElement('span');
-      pts.className = 'kc-chore__points';
+      pts.className = 'kc-chore__points kc-widget__chore-points';
       pts.textContent = t('extensions.kids-chores.page.points', { count: item.points });
       btn.append(title, pts);
       if (!item.done && data.access === 'write') {

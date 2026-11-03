@@ -1,6 +1,7 @@
 import { t } from '/i18n.js';
 import { ensureStyle } from '/utils/component-style.js';
 import { showToast } from '/utils/toast-show.js';
+import { makeSortable } from '/utils/sortable.js';
 import { WEEKDAYS, choresApi } from './browser.js';
 
 const STYLE = '/api/v1/modules/assets/kids-chores/style.css';
@@ -9,6 +10,10 @@ let fieldSeq = 0;
 function nextId(prefix) {
   fieldSeq += 1;
   return `kc-${prefix}-${fieldSeq}`;
+}
+
+function paintIcons(root) {
+  if (window.lucide) window.lucide.createIcons({ el: root });
 }
 
 function formField(labelText, control, { hint } = {}) {
@@ -64,6 +69,29 @@ function actionsRow(...buttons) {
   return row;
 }
 
+function iconButton({ action, icon, label, disabled = false }) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'row-action';
+  btn.dataset.action = action;
+  btn.setAttribute('aria-label', label);
+  btn.title = label;
+  btn.disabled = disabled;
+  const i = document.createElement('i');
+  i.dataset.lucide = icon;
+  i.setAttribute('aria-hidden', 'true');
+  btn.append(i);
+  return btn;
+}
+
+function dayMeta(chore) {
+  return (chore.days || [])
+    .map((d) => WEEKDAYS.find((w) => w.day === d))
+    .filter(Boolean)
+    .map((w) => t(`extensions.kids-chores.${w.key}`))
+    .join(', ');
+}
+
 export async function render(container, { section, signal }) {
   if (section !== 'household') {
     container.replaceChildren();
@@ -79,7 +107,13 @@ export async function render(container, { section, signal }) {
 
   let csrf = '';
   let gone = false;
-  signal?.addEventListener('abort', () => { gone = true; }, { once: true });
+  let sortable = null;
+  let editingId = null;
+  signal?.addEventListener('abort', () => {
+    gone = true;
+    sortable?.destroy?.();
+    sortable = null;
+  }, { once: true });
 
   const title = document.createElement('h3');
   title.textContent = t('extensions.kids-chores.settings.householdTitle');
@@ -215,8 +249,41 @@ export async function render(container, { section, signal }) {
     settingsForm.append(actionsRow(save, test));
   }
 
+  async function persistOrder(listEl) {
+    const ids = [...listEl.querySelectorAll('[data-chore-id]')].map((el) => el.dataset.choreId);
+    try {
+      const next = await choresApi('/chores/reorder', {
+        method: 'PUT',
+        body: { ids },
+        csrf,
+        signal,
+      });
+      if (gone) return;
+      csrf = next.csrfToken || csrf;
+      paintChores(next.chores || []);
+    } catch (err) {
+      if (err.csrfToken) csrf = err.csrfToken;
+      showToast({ message: err.message, variant: 'danger' });
+      await reload();
+    }
+  }
+
+  function moveChore(chores, id, delta) {
+    const index = chores.findIndex((c) => c.id === id);
+    if (index < 0) return chores;
+    const next = index + delta;
+    if (next < 0 || next >= chores.length) return chores;
+    const copy = chores.slice();
+    const [row] = copy.splice(index, 1);
+    copy.splice(next, 0, row);
+    return copy;
+  }
+
   function paintChores(chores) {
+    sortable?.destroy?.();
+    sortable = null;
     choresBox.replaceChildren();
+
     const heading = document.createElement('h3');
     heading.textContent = t('extensions.kids-chores.settings.choresTitle');
     choresBox.append(heading);
@@ -226,44 +293,191 @@ export async function render(container, { section, signal }) {
       empty.className = 'form-hint';
       empty.textContent = t('extensions.kids-chores.settings.noChoresYet');
       choresBox.append(empty);
-    }
+    } else {
+      const list = document.createElement('div');
+      list.className = 'kc-chore-list';
+      chores.forEach((chore, index) => {
+        const row = document.createElement('div');
+        row.className = 'kc-chore-row';
+        row.dataset.choreId = chore.id;
 
-    for (const chore of chores) {
-      const row = document.createElement('div');
-      row.className = 'kc-chore-row';
-      const left = document.createElement('div');
-      left.className = 'kc-chore-row__text';
-      const name = document.createElement('strong');
-      name.textContent = chore.title;
-      const meta = document.createElement('div');
-      meta.className = 'kc-chore-row__meta';
-      const dayLabels = (chore.days || [])
-        .map((d) => WEEKDAYS.find((w) => w.day === d))
-        .filter(Boolean)
-        .map((w) => t(`extensions.kids-chores.${w.key}`))
-        .join(', ');
-      meta.textContent = `${t('extensions.kids-chores.page.points', { count: chore.points })} · ${dayLabels}`;
-      left.append(name, meta);
+        const order = document.createElement('div');
+        order.className = 'kc-chore-row__order';
+        const up = iconButton({
+          action: 'up',
+          icon: 'chevron-up',
+          label: t('extensions.kids-chores.settings.moveUp', { name: chore.title }),
+          disabled: index === 0,
+        });
+        const handle = document.createElement('button');
+        handle.type = 'button';
+        handle.className = 'kc-chore-row__handle';
+        handle.setAttribute('aria-label', t('extensions.kids-chores.settings.reorderHandle', { name: chore.title }));
+        handle.title = t('extensions.kids-chores.settings.reorderHint');
+        const grip = document.createElement('i');
+        grip.dataset.lucide = 'grip-horizontal';
+        grip.setAttribute('aria-hidden', 'true');
+        handle.append(grip);
+        const down = iconButton({
+          action: 'down',
+          icon: 'chevron-down',
+          label: t('extensions.kids-chores.settings.moveDown', { name: chore.title }),
+          disabled: index === chores.length - 1,
+        });
+        order.append(up, handle, down);
 
-      const del = document.createElement('button');
-      del.type = 'button';
-      del.className = 'btn btn--danger';
-      del.textContent = t('extensions.kids-chores.settings.delete');
-      del.addEventListener('click', async () => {
-        del.disabled = true;
-        try {
-          const next = await choresApi(`/chores/${chore.id}`, { method: 'DELETE', csrf, signal });
-          if (gone) return;
-          csrf = next.csrfToken || csrf;
-          paintChores(next.chores || []);
-        } catch (err) {
-          if (err.csrfToken) csrf = err.csrfToken;
-          showToast({ message: err.message, variant: 'danger' });
-          del.disabled = false;
+        const left = document.createElement('div');
+        left.className = 'kc-chore-row__text';
+        const name = document.createElement('strong');
+        name.textContent = chore.title;
+        const meta = document.createElement('div');
+        meta.className = 'kc-chore-row__meta';
+        meta.textContent = `${t('extensions.kids-chores.page.points', { count: chore.points })} · ${dayMeta(chore)}`;
+        left.append(name, meta);
+
+        const actions = document.createElement('div');
+        actions.className = 'kc-chore-row__actions';
+        const edit = document.createElement('button');
+        edit.type = 'button';
+        edit.className = 'btn';
+        edit.textContent = t('extensions.kids-chores.settings.edit');
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'btn btn--danger';
+        del.textContent = t('extensions.kids-chores.settings.delete');
+
+        up.addEventListener('click', async () => {
+          const ordered = moveChore(chores, chore.id, -1);
+          if (ordered === chores) return;
+          const listEl = document.createElement('div');
+          for (const c of ordered) {
+            const fake = document.createElement('div');
+            fake.dataset.choreId = c.id;
+            listEl.append(fake);
+          }
+          await persistOrder(listEl);
+        }, { signal });
+        down.addEventListener('click', async () => {
+          const ordered = moveChore(chores, chore.id, 1);
+          if (ordered === chores) return;
+          const listEl = document.createElement('div');
+          for (const c of ordered) {
+            const fake = document.createElement('div');
+            fake.dataset.choreId = c.id;
+            listEl.append(fake);
+          }
+          await persistOrder(listEl);
+        }, { signal });
+
+        edit.addEventListener('click', () => {
+          editingId = editingId === chore.id ? null : chore.id;
+          paintChores(chores);
+        }, { signal });
+
+        del.addEventListener('click', async () => {
+          del.disabled = true;
+          try {
+            const next = await choresApi(`/chores/${chore.id}`, { method: 'DELETE', csrf, signal });
+            if (gone) return;
+            csrf = next.csrfToken || csrf;
+            if (editingId === chore.id) editingId = null;
+            paintChores(next.chores || []);
+          } catch (err) {
+            if (err.csrfToken) csrf = err.csrfToken;
+            showToast({ message: err.message, variant: 'danger' });
+            del.disabled = false;
+          }
+        }, { signal });
+
+        actions.append(edit, del);
+        row.append(order, left, actions);
+
+        if (editingId === chore.id) {
+          const editor = document.createElement('div');
+          editor.className = 'kc-chore-row__editor';
+          const titleInput = document.createElement('input');
+          titleInput.type = 'text';
+          titleInput.maxLength = 80;
+          titleInput.value = chore.title;
+          const pointsInput = document.createElement('input');
+          pointsInput.type = 'number';
+          pointsInput.min = '0';
+          pointsInput.max = '1000';
+          pointsInput.value = String(chore.points);
+          const days = daysPicker(chore.days);
+          const saveEdit = document.createElement('button');
+          saveEdit.type = 'button';
+          saveEdit.className = 'btn btn--primary';
+          saveEdit.textContent = t('extensions.kids-chores.settings.saveChore');
+          const cancel = document.createElement('button');
+          cancel.type = 'button';
+          cancel.className = 'btn';
+          cancel.textContent = t('extensions.kids-chores.settings.cancel');
+          cancel.addEventListener('click', () => {
+            editingId = null;
+            paintChores(chores);
+          }, { signal });
+          saveEdit.addEventListener('click', async () => {
+            saveEdit.disabled = true;
+            try {
+              const next = await choresApi(`/chores/${chore.id}`, {
+                method: 'PUT',
+                body: {
+                  title: titleInput.value,
+                  points: Number(pointsInput.value),
+                  days: readDays(days),
+                },
+                csrf,
+                signal,
+              });
+              if (gone) return;
+              csrf = next.csrfToken || csrf;
+              editingId = null;
+              showToast({ message: t('extensions.kids-chores.settings.savedChore'), variant: 'success' });
+              paintChores(next.chores || []);
+            } catch (err) {
+              if (err.csrfToken) csrf = err.csrfToken;
+              showToast({ message: err.message, variant: 'danger' });
+              saveEdit.disabled = false;
+            }
+          }, { signal });
+          editor.append(
+            formField(t('extensions.kids-chores.settings.choreTitle'), titleInput),
+            formField(t('extensions.kids-chores.settings.chorePoints'), pointsInput),
+            (() => {
+              const field = document.createElement('div');
+              field.className = 'form-field';
+              const lab = document.createElement('span');
+              lab.className = 'form-label';
+              lab.textContent = t('extensions.kids-chores.settings.choreDays');
+              field.append(lab, days);
+              return field;
+            })(),
+            actionsRow(saveEdit, cancel),
+          );
+          row.append(editor);
         }
-      }, { signal });
-      row.append(left, del);
-      choresBox.append(row);
+
+        list.append(row);
+      });
+      choresBox.append(list);
+      paintIcons(list);
+
+      if (chores.length > 1) {
+        makeSortable(list, {
+          handle: '.kc-chore-row__handle',
+          draggable: '.kc-chore-row',
+          onEnd: async () => {
+            await persistOrder(list);
+          },
+        }).then((instance) => {
+          if (gone || !list.isConnected) {
+            instance?.destroy?.();
+            return;
+          }
+          sortable = instance;
+        }).catch(() => {});
+      }
     }
 
     const form = document.createElement('div');

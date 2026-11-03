@@ -158,6 +158,54 @@ test('API: admin creates chore, member completes it, goal fires webhook once', a
   }
 });
 
+test('API reorders chores and updates a chore', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'kc-'));
+  const me = startMe((_req, res) => admin(res));
+  try {
+    const meUrl = await listen(me);
+    const server = createKidsChoresServer({ dataDir: dir, yuvomiUrl: meUrl });
+    const base = await listen(server);
+    const first = await call(base, '/api/extensions/kids-chores/today', { cookie: 'yuvomi.sid=ok' });
+    const jar = `yuvomi.sid=ok; ${first.cookie}`;
+    const csrf = first.body.csrfToken;
+
+    const a = await call(base, '/api/extensions/kids-chores/chores', {
+      method: 'POST', cookie: jar, csrf, json: { title: 'First', points: 1, days: [1, 2, 3, 4, 5] },
+    });
+    const b = await call(base, '/api/extensions/kids-chores/chores', {
+      method: 'POST', cookie: jar, csrf, json: { title: 'Second', points: 2, days: [1, 2, 3, 4, 5] },
+    });
+    const idA = a.body.chores.find((c) => c.title === 'First').id;
+    const idB = b.body.chores.find((c) => c.title === 'Second').id;
+
+    const reordered = await call(base, '/api/extensions/kids-chores/chores/reorder', {
+      method: 'PUT',
+      cookie: jar,
+      csrf,
+      json: { ids: [idB, idA] },
+    });
+    assert.equal(reordered.status, 200, JSON.stringify(reordered.body));
+    assert.deepEqual(reordered.body.chores.map((c) => c.id), [idB, idA]);
+
+    const edited = await call(base, `/api/extensions/kids-chores/chores/${idB}`, {
+      method: 'PUT',
+      cookie: jar,
+      csrf,
+      json: { title: 'Second edited', points: 9, days: [6, 7] },
+    });
+    assert.equal(edited.status, 200, JSON.stringify(edited.body));
+    const row = edited.body.chores.find((c) => c.id === idB);
+    assert.equal(row.title, 'Second edited');
+    assert.equal(row.points, 9);
+    assert.deepEqual(row.days, [6, 7]);
+
+    await close(server);
+  } finally {
+    await close(me);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('API refuses completing a chore not scheduled today', async () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'kc-'));
   const me = startMe((_req, res) => admin(res));

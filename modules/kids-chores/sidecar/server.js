@@ -358,6 +358,21 @@ export function createKidsChoresHandler({
         return;
       }
 
+      if (req.method === 'PUT' && sub === '/chores/reorder') {
+        if (session.role !== 'admin') throw new HttpError(403, 'forbidden', 'Admin only.');
+        const body = await readBody(req);
+        const ids = Array.isArray(body?.ids) ? body.ids.map((id) => String(id)) : [];
+        if (ids.some((id) => !ID_RE.test(id))) throw new HttpError(400, 'invalid', 'Order is invalid.');
+        try {
+          await store.reorderChores(ids);
+        } catch (err) {
+          if (err.code === 'invalid') throw new HttpError(400, 'invalid', err.message);
+          throw err;
+        }
+        reply(req, res, 200, { chores: store.listChores(), settings: store.publicSettings() });
+        return;
+      }
+
       if (req.method === 'PUT' && sub.startsWith('/chores/')) {
         if (session.role !== 'admin') throw new HttpError(403, 'forbidden', 'Admin only.');
         const id = sub.slice('/chores/'.length);
