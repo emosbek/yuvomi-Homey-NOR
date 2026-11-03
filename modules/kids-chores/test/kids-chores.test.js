@@ -7,6 +7,21 @@ import { test } from 'node:test';
 import { createKidsChoresServer } from '../sidecar/server.js';
 import { createStore, localDateKey, localIsoWeekday } from '../sidecar/store.js';
 
+/** Mirrors modules/kids-chores/browser.js maxDailyPoints for Node tests. */
+function maxDailyPoints(chores = []) {
+  let max = 0;
+  for (let day = 1; day <= 7; day += 1) {
+    let sum = 0;
+    for (const chore of chores) {
+      if (chore?.active === false) continue;
+      if (!Array.isArray(chore?.days) || !chore.days.includes(day)) continue;
+      sum += Math.max(0, Number(chore.points) || 0);
+    }
+    if (sum > max) max = sum;
+  }
+  return max;
+}
+
 function listen(server) {
   return new Promise((resolve) => {
     server.listen(0, '127.0.0.1', () => {
@@ -141,6 +156,16 @@ test('API: admin creates chore, member completes it, goal fires webhook once', a
     assert.equal(hooks.length, 1);
     assert.equal(hooks[0].event, 'kids_chores.goal_reached');
 
+    const today = await call(base, '/api/extensions/kids-chores/today', { cookie: jar });
+    assert.equal(today.status, 200);
+    assert.ok(today.body.notices?.length >= 1);
+    const notice = today.body.notices[0];
+    assert.equal(notice.kind, 'goal');
+    assert.equal(notice.date, '2026-11-03');
+    assert.equal(notice.earned, 5);
+    assert.equal(notice.goal, 5);
+    assert.equal(notice.message, undefined, 'UI localizes notices; no English message stored');
+
     const again = await call(base, '/api/extensions/kids-chores/complete', {
       method: 'POST',
       cookie: jar,
@@ -234,6 +259,47 @@ test('API reorders chores and updates a chore', async () => {
     assert.equal(row.title, 'Second edited');
     assert.equal(row.points, 9);
     assert.deepEqual(row.days, [6, 7]);
+
+    await close(server);
+  } finally {
+    await close(me);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('maxDailyPoints follows weekday chore sums', () => {
+  const chores = [
+    { title: 'Weekday', points: 5, days: [1, 2, 3, 4, 5], active: true },
+    { title: 'Weekend', points: 8, days: [6, 7], active: true },
+    { title: 'Off', points: 100, days: [1], active: false },
+  ];
+  assert.equal(maxDailyPoints(chores), 8);
+  assert.equal(maxDailyPoints([]), 0);
+});
+
+test('API stores displayTitle for the overview widget', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'kc-'));
+  const me = startMe((_req, res) => admin(res));
+  try {
+    const meUrl = await listen(me);
+    const server = createKidsChoresServer({ dataDir: dir, yuvomiUrl: meUrl });
+    const base = await listen(server);
+    const first = await call(base, '/api/extensions/kids-chores/today', { cookie: 'yuvomi.sid=ok' });
+    const jar = `yuvomi.sid=ok; ${first.cookie}`;
+    const csrf = first.body.csrfToken;
+
+    const saved = await call(base, '/api/extensions/kids-chores/settings', {
+      method: 'PUT',
+      cookie: jar,
+      csrf,
+      json: { displayTitle: 'Emma', pointGoal: 12 },
+    });
+    assert.equal(saved.status, 200, JSON.stringify(saved.body));
+    assert.equal(saved.body.settings.displayTitle, 'Emma');
+    assert.equal(saved.body.settings.pointGoal, 12);
+
+    const today = await call(base, '/api/extensions/kids-chores/today', { cookie: jar });
+    assert.equal(today.body.settings.displayTitle, 'Emma');
 
     await close(server);
   } finally {

@@ -197,12 +197,12 @@ async function maybeFireGoal(store, session, now = new Date()) {
   }
 
   if (!notified && settings.notifyAdmin !== false) {
+    /* Structured fields only — UI localizes the sentence + date. */
     await store.pushNotice({
       kind: 'goal',
       date: bundle.date,
       earned: bundle.earned,
       goal: bundle.goal,
-      message: `Daily points goal reached (${bundle.earned}/${bundle.goal}).`,
     });
     notified = true;
   }

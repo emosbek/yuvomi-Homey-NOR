@@ -21,6 +21,27 @@ export function reasonMessage(reason) {
   return t('extensions.kids-chores.reason.invalid');
 }
 
+/** Highest points earnable on any single weekday from active chores. */
+export function maxDailyPoints(chores = []) {
+  let max = 0;
+  for (let day = 1; day <= 7; day += 1) {
+    let sum = 0;
+    for (const chore of chores) {
+      if (chore?.active === false) continue;
+      if (!Array.isArray(chore?.days) || !chore.days.includes(day)) continue;
+      sum += Math.max(0, Number(chore.points) || 0);
+    }
+    if (sum > max) max = sum;
+  }
+  return max;
+}
+
+/** Custom overview/page title, or the translated module default. */
+export function moduleDisplayTitle(settings, fallbackKey = 'extensions.kids-chores.page.title') {
+  const custom = String(settings?.displayTitle || '').trim();
+  return custom || t(fallbackKey);
+}
+
 export async function choresApi(path, { method = 'GET', body, signal, csrf } = {}) {
   const send = async (token) => {
     const response = await fetch(`${API}${path}`, {

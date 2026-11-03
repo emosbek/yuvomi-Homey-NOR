@@ -1,9 +1,9 @@
-import { t } from '/i18n.js';
+import { formatDate, t } from '/i18n.js';
 import { esc } from '/utils/html.js';
 import { mountEmptyState } from '/utils/empty-state.js';
 import { renderPageBody, renderPageHeader, renderPageSection, renderPageTitle } from '/utils/page-layout.js';
 import { showToast } from '/utils/toast-show.js';
-import { choresApi, progressMark } from './browser.js';
+import { choresApi, moduleDisplayTitle, progressMark } from './browser.js';
 
 const ACCENT = '#EA580C';
 
@@ -11,9 +11,9 @@ function paintIcons(root) {
   if (window.lucide) window.lucide.createIcons({ el: root });
 }
 
-function shell() {
+function shell(title) {
   return renderPageHeader({
-    title: renderPageTitle(esc(t('extensions.kids-chores.page.title'))),
+    title: renderPageTitle(esc(title)),
   }) + renderPageBody({
     content: renderPageSection({
       id: 'kc-main',
@@ -26,12 +26,24 @@ function shell() {
   });
 }
 
+function noticeLine(notice) {
+  if (notice?.kind === 'goal' || (notice?.earned != null && notice?.goal != null)) {
+    const dateLabel = formatDate(notice.date || notice.at) || notice.date || '';
+    return t('extensions.kids-chores.page.goalNotice', {
+      date: dateLabel,
+      earned: notice.earned,
+      goal: notice.goal,
+    });
+  }
+  return notice?.message || '';
+}
+
 export async function render(container, context) {
   const signal = context?.signal;
   container.replaceChildren();
   container.style.setProperty('--seal-accent', ACCENT);
   container.style.setProperty('--active-module-accent', ACCENT);
-  container.insertAdjacentHTML('beforeend', shell());
+  container.insertAdjacentHTML('beforeend', shell(t('extensions.kids-chores.page.title')));
   paintIcons(container);
 
   const noticesEl = container.querySelector('#kc-notices');
@@ -43,11 +55,16 @@ export async function render(container, context) {
   let gone = false;
   signal?.addEventListener('abort', () => { gone = true; }, { once: true });
 
+  function setPageTitle(title) {
+    const heading = container.querySelector('.page-toolbar__title');
+    if (heading) heading.textContent = title;
+  }
+
   function renderProgress(data) {
     progressEl.replaceChildren();
     progressEl.insertAdjacentHTML('beforeend', progressMark({
       percent: data.percent,
-      icon: data.progressIcon || 'sun',
+      icon: data.progressIcon || data.settings?.progressIcon || 'sun',
       size: 88,
     }));
     const score = document.createElement('p');
@@ -71,11 +88,13 @@ export async function render(container, context) {
     box.className = 'kc-notices';
     box.setAttribute('role', 'status');
     const title = document.createElement('strong');
-    title.textContent = t('extensions.kids-chores.page.adminNotices');
+    title.textContent = t('extensions.kids-chores.page.pointsHistory');
     box.append(title);
-    for (const notice of data.notices.slice(0, 3)) {
+    for (const notice of data.notices.slice(0, 10)) {
+      const line = noticeLine(notice);
+      if (!line) continue;
       const p = document.createElement('p');
-      p.textContent = notice.message || '';
+      p.textContent = line;
       box.append(p);
     }
     noticesEl.append(box);
@@ -131,28 +150,23 @@ export async function render(container, context) {
             csrf = next.csrfToken || csrf;
             paint(next);
             if (next.goalReached) {
-              showToast({
-                message: t('extensions.kids-chores.page.goalReached'),
-                variant: 'success',
-              });
+              showToast(t('extensions.kids-chores.page.goalReached'), 'success');
             }
           } catch (err) {
             if (gone) return;
             if (err.csrfToken) csrf = err.csrfToken;
             btn.disabled = false;
-            showToast({ message: err.message, variant: 'danger' });
+            showToast(err.message || t('extensions.kids-chores.reason.invalid'), 'danger');
           }
         }, { signal });
       }
       li.append(btn);
       listEl.append(li);
-      if (item.done && open.length) {
-        /* still show done faintly so kids see what they finished */
-      }
     }
   }
 
   function paint(data) {
+    setPageTitle(moduleDisplayTitle(data.settings));
     renderNotices(data);
     renderProgress(data);
     renderList(data);

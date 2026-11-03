@@ -15,7 +15,8 @@ function empty() {
     version: 1,
     settings: {
       pointGoal: 10,
-      congratsMessage: 'All done for today — great work!',
+      congratsMessage: '',
+      displayTitle: '',
       webhookUrl: null,
       notifyAdmin: true,
       timezone: 'Europe/Oslo',
@@ -62,8 +63,10 @@ function cleanSettings(raw, fallback) {
     if (Number.isFinite(goal)) base.pointGoal = Math.max(1, Math.min(100000, goal));
   }
   if (raw.congratsMessage !== undefined) {
-    base.congratsMessage = String(raw.congratsMessage ?? '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, 200)
-      || fallback.congratsMessage;
+    base.congratsMessage = String(raw.congratsMessage ?? '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, 200);
+  }
+  if (raw.displayTitle !== undefined) {
+    base.displayTitle = String(raw.displayTitle ?? '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, 60);
   }
   if (raw.webhookUrl !== undefined) {
     const url = String(raw.webhookUrl ?? '').trim();
@@ -201,7 +204,8 @@ export function createStore(dir) {
       const s = state.settings;
       return {
         pointGoal: s.pointGoal,
-        congratsMessage: s.congratsMessage,
+        congratsMessage: s.congratsMessage || '',
+        displayTitle: s.displayTitle || '',
         notifyAdmin: s.notifyAdmin !== false,
         timezone: s.timezone,
         progressIcon: s.progressIcon === 'star' ? 'star' : 'sun',

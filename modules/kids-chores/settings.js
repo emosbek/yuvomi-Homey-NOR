@@ -2,7 +2,7 @@ import { t } from '/i18n.js';
 import { ensureStyle } from '/utils/component-style.js';
 import { showToast } from '/utils/toast-show.js';
 import { makeSortable } from '/utils/sortable.js';
-import { WEEKDAYS, choresApi } from './browser.js';
+import { WEEKDAYS, choresApi, maxDailyPoints } from './browser.js';
 
 const STYLE = '/api/v1/modules/assets/kids-chores/style.css';
 
@@ -130,6 +130,17 @@ export async function render(container, { section, signal }) {
   choresBox.className = 'kc-settings-chores';
   root.append(settingsForm, choresBox);
 
+  let latestChores = [];
+  let goalMaxHint = null;
+
+  function updateGoalMaxHint() {
+    if (!goalMaxHint) return;
+    const max = maxDailyPoints(latestChores);
+    goalMaxHint.textContent = max > 0
+      ? t('extensions.kids-chores.settings.pointGoalMax', { max })
+      : t('extensions.kids-chores.settings.pointGoalMaxNone');
+  }
+
   async function reload() {
     const data = await choresApi('/chores', { signal, csrf });
     if (gone) return;
@@ -141,12 +152,26 @@ export async function render(container, { section, signal }) {
   function paintSettings(settings) {
     settingsForm.replaceChildren();
 
+    const displayTitle = document.createElement('input');
+    displayTitle.type = 'text';
+    displayTitle.maxLength = 60;
+    displayTitle.value = settings.displayTitle || '';
+    displayTitle.autocomplete = 'off';
+    displayTitle.placeholder = t('extensions.kids-chores.widgets.today');
+
     const goal = document.createElement('input');
     goal.type = 'number';
     goal.min = '1';
     goal.max = '100000';
     goal.value = String(settings.pointGoal ?? 10);
     goal.inputMode = 'numeric';
+
+    goalMaxHint = document.createElement('p');
+    goalMaxHint.className = 'form-hint';
+    updateGoalMaxHint();
+
+    const goalField = formField(t('extensions.kids-chores.settings.pointGoal'), goal);
+    goalField.append(goalMaxHint);
 
     const congrats = document.createElement('textarea');
     congrats.rows = 3;
@@ -174,7 +199,12 @@ export async function render(container, { section, signal }) {
     }
 
     settingsForm.append(
-      formField(t('extensions.kids-chores.settings.pointGoal'), goal),
+      formField(
+        t('extensions.kids-chores.settings.displayTitle'),
+        displayTitle,
+        { hint: t('extensions.kids-chores.settings.displayTitleHint') },
+      ),
+      goalField,
       formField(t('extensions.kids-chores.settings.congrats'), congrats),
       formField(
         t('extensions.kids-chores.settings.webhook'),
@@ -205,6 +235,7 @@ export async function render(container, { section, signal }) {
       save.disabled = true;
       try {
         const body = {
+          displayTitle: displayTitle.value,
           pointGoal: Number(goal.value),
           congratsMessage: congrats.value,
           timezone: tz.value,
@@ -217,11 +248,13 @@ export async function render(container, { section, signal }) {
         const next = await choresApi('/settings', { method: 'PUT', body, csrf, signal });
         if (gone) return;
         csrf = next.csrfToken || csrf;
-        showToast({ message: t('extensions.kids-chores.settings.saved'), variant: 'success' });
+        showToast(t('extensions.kids-chores.settings.saved'), 'success');
         paintSettings(next.settings);
+        if (next.chores) paintChores(next.chores);
+        else updateGoalMaxHint();
       } catch (err) {
         if (err.csrfToken) csrf = err.csrfToken;
-        showToast({ message: err.message, variant: 'danger' });
+        showToast(err.message || t('extensions.kids-chores.reason.invalid'), 'danger');
         save.disabled = false;
       }
     }, { signal });
@@ -237,10 +270,10 @@ export async function render(container, { section, signal }) {
         const next = await choresApi('/test-webhook', { method: 'POST', body: {}, csrf, signal });
         if (gone) return;
         csrf = next.csrfToken || csrf;
-        showToast({ message: t('extensions.kids-chores.settings.webhookOk'), variant: 'success' });
+        showToast(t('extensions.kids-chores.settings.webhookOk'), 'success');
       } catch (err) {
         if (err.csrfToken) csrf = err.csrfToken;
-        showToast({ message: err.message, variant: 'danger' });
+        showToast(err.message || t('extensions.kids-chores.reason.invalid'), 'danger');
       } finally {
         if (!gone) test.disabled = !settings.webhookSet;
       }
@@ -258,12 +291,13 @@ export async function render(container, { section, signal }) {
         const next = await choresApi('/reset-today', { method: 'POST', body: {}, csrf, signal });
         if (gone) return;
         csrf = next.csrfToken || csrf;
-        showToast({ message: t('extensions.kids-chores.settings.resetTodayDone'), variant: 'success' });
+        showToast(t('extensions.kids-chores.settings.resetTodayDone'), 'success');
         if (next.settings) paintSettings(next.settings);
         if (next.chores) paintChores(next.chores);
+        else updateGoalMaxHint();
       } catch (err) {
         if (err.csrfToken) csrf = err.csrfToken;
-        showToast({ message: err.message, variant: 'danger' });
+        showToast(err.message || t('extensions.kids-chores.reason.invalid'), 'danger');
       } finally {
         if (!gone) reset.disabled = false;
       }
@@ -286,7 +320,7 @@ export async function render(container, { section, signal }) {
       paintChores(next.chores || []);
     } catch (err) {
       if (err.csrfToken) csrf = err.csrfToken;
-      showToast({ message: err.message, variant: 'danger' });
+      showToast(err.message || t('extensions.kids-chores.reason.invalid'), 'danger');
       await reload();
     }
   }
@@ -303,6 +337,8 @@ export async function render(container, { section, signal }) {
   }
 
   function paintChores(chores) {
+    latestChores = Array.isArray(chores) ? chores : [];
+    updateGoalMaxHint();
     sortable?.destroy?.();
     sortable = null;
     choresBox.replaceChildren();
@@ -407,7 +443,7 @@ export async function render(container, { section, signal }) {
             paintChores(next.chores || []);
           } catch (err) {
             if (err.csrfToken) csrf = err.csrfToken;
-            showToast({ message: err.message, variant: 'danger' });
+            showToast(err.message || t('extensions.kids-chores.reason.invalid'), 'danger');
             del.disabled = false;
           }
         }, { signal });
@@ -456,11 +492,11 @@ export async function render(container, { section, signal }) {
               if (gone) return;
               csrf = next.csrfToken || csrf;
               editingId = null;
-              showToast({ message: t('extensions.kids-chores.settings.savedChore'), variant: 'success' });
+              showToast(t('extensions.kids-chores.settings.savedChore'), 'success');
               paintChores(next.chores || []);
             } catch (err) {
               if (err.csrfToken) csrf = err.csrfToken;
-              showToast({ message: err.message, variant: 'danger' });
+              showToast(err.message || t('extensions.kids-chores.reason.invalid'), 'danger');
               saveEdit.disabled = false;
             }
           }, { signal });
@@ -549,10 +585,10 @@ export async function render(container, { section, signal }) {
         csrf = next.csrfToken || csrf;
         name.value = '';
         paintChores(next.chores || []);
-        showToast({ message: t('extensions.kids-chores.settings.added'), variant: 'success' });
+        showToast(t('extensions.kids-chores.settings.added'), 'success');
       } catch (err) {
         if (err.csrfToken) csrf = err.csrfToken;
-        showToast({ message: err.message, variant: 'danger' });
+        showToast(err.message || t('extensions.kids-chores.reason.invalid'), 'danger');
         add.disabled = false;
       }
     }, { signal });

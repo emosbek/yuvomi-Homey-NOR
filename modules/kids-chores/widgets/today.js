@@ -2,7 +2,7 @@ import { t } from '/i18n.js';
 import { ensureStyle } from '/utils/component-style.js';
 import { mountEmptyState } from '/utils/empty-state.js';
 import { showToast } from '/utils/toast-show.js';
-import { choresApi, progressMark } from '../browser.js';
+import { choresApi, moduleDisplayTitle, progressMark } from '../browser.js';
 
 const STYLE = '/api/v1/modules/assets/kids-chores/style.css';
 const PATH = '/m/kids-chores';
@@ -57,7 +57,7 @@ function header(title, count) {
 export async function renderWidget(container, { signal } = {}) {
   ensureStyle(STYLE);
   container.replaceChildren();
-  const title = t('extensions.kids-chores.widgets.today');
+  const fallbackTitle = t('extensions.kids-chores.widgets.today');
   let csrf = '';
   let gone = false;
   signal?.addEventListener('abort', () => { gone = true; }, { once: true });
@@ -67,6 +67,7 @@ export async function renderWidget(container, { signal } = {}) {
     if (gone) return;
     csrf = data.csrfToken || csrf;
 
+    const title = moduleDisplayTitle(data.settings, 'extensions.kids-chores.widgets.today');
     const open = data.open || [];
     container.replaceChildren();
     applyAccent(container);
@@ -141,15 +142,12 @@ export async function renderWidget(container, { signal } = {}) {
               csrf = next.csrfToken || csrf;
               await load();
               if (next.goalReached) {
-                showToast({
-                  message: t('extensions.kids-chores.page.goalReached'),
-                  variant: 'success',
-                });
+                showToast(t('extensions.kids-chores.page.goalReached'), 'success');
               }
             } catch (err) {
               if (err.csrfToken) csrf = err.csrfToken;
               btn.disabled = false;
-              showToast({ message: err.message, variant: 'danger' });
+              showToast(err.message || t('extensions.kids-chores.reason.invalid'), 'danger');
             }
           }, { signal });
           list.append(btn);
@@ -172,7 +170,7 @@ export async function renderWidget(container, { signal } = {}) {
   } catch (err) {
     if (gone) return;
     container.replaceChildren();
-    container.append(header(title, 0));
+    container.append(header(fallbackTitle, 0));
     const empty = document.createElement('div');
     mountEmptyState(empty, {
       icon: 'triangle-alert',
