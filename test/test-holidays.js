@@ -100,7 +100,7 @@ function makeApiMock() {
       // Alle lokal berechneten Laender aus #965: OpenHolidays kennt sie nicht
       // (oder liefert wie bei BR real eine leere Antwort) - derselbe
       // "erfolgreich, aber leer" Pfad wie beim urspruenglichen Brasilien-Fall.
-      if (['BR', 'US', 'CA', 'GB', 'AU', 'NZ'].includes(country)) return okJson([]);
+      if (['BR', 'US', 'CA', 'GB', 'AU', 'NZ', 'NO'].includes(country)) return okJson([]);
       // Spanien wie in #946: die Landessprache steht ZUERST im Array, Englisch
       // weiter hinten - und "Reyes" fuehrt die API nur auf Spanisch und
       // Katalanisch. So laesst sich beides pruefen: die Wahl der Wunschsprache
@@ -138,7 +138,7 @@ function makeApiMock() {
       // Keins der #965-Laender hat eine Schulferien-Quelle (real nicht bei
       // OpenHolidays gefuehrt) - der Mock muss das nachbilden, sonst wuerde er
       // faelschlich deutsche Sommerferien fuer z. B. die USA zurueckgeben.
-      if (['BR', 'US', 'CA', 'GB', 'AU', 'NZ'].includes(country)) return okJson([]);
+      if (['BR', 'US', 'CA', 'GB', 'AU', 'NZ', 'NO'].includes(country)) return okJson([]);
       return okJson([
         { startDate: '2026-07-20', endDate: '2026-08-30',
           name: [{ language: 'DE', text: 'Sommerferien' }, { language: 'EN', text: 'Summer break' }] },
@@ -1125,12 +1125,12 @@ test('sync: der wartende Lauf sieht den NEUEN Stand, nicht den alten (#946)', as
   assert.ok(db.prepare("SELECT value FROM sync_config WHERE key='holiday_last_sync_scope'").get()?.value?.startsWith('EN|'));
 });
 
-// ---- #965: lokal berechnete Laender (US/CA/GB/AU/NZ) ------------------------
+// ---- #965: lokal berechnete Laender (US/CA/GB/AU/NZ/NO) ---------------------
 // Jedes Datum unten wurde unabhaengig gegen `date -d` (Wochentags-Fakten) und
-// gegen amtliche/gut belegte Quellen (GOV.UK, mygov.scot, MBIE, Canada.ca)
-// geprueft, nicht nur gegen die eigene Implementierung - sonst bewiese ein
-// Test nur, dass Code und Fixture denselben (moeglicherweise falschen)
-// Gedankengang teilen.
+// gegen amtliche/gut belegte Quellen (GOV.UK, mygov.scot, MBIE, Canada.ca,
+// Lov om helligdager / Nager.Date Public fuer NO) geprueft, nicht nur gegen
+// die eigene Implementierung - sonst bewiese ein Test nur, dass Code und
+// Fixture denselben (moeglicherweise falschen) Gedankengang teilen.
 
 test('US: 11 Bundesfeiertage, inkl. Beobachtungsregel (Samstag zurueck, Sonntag vor)', () => {
   const names2026 = namesAndDates(2026, 'US');
@@ -1301,6 +1301,41 @@ test('NZ: Neujahr/2.-Januar- und Weihnachten/Boxing-Day-Paare wie in Schottland'
   const names2021 = namesAndDates(2021, 'NZ');
   assert.ok(names2021.includes('2021-12-27 Christmas Day'));
   assert.ok(names2021.includes('2021-12-28 Boxing Day'));
+});
+
+test('NO: 12 helligdager, Osterversatz wie Nager.Date Public, keine Wochenend-Verschiebung', () => {
+  // Gegen Nager.Date /PublicHolidays/2026/NO (type=Public; Julaften ist Bank
+  // und fehlt hier bewusst). 17. mai 2026 faellt auf einen Sonntag und bleibt
+  // dort - Norwegen kennt keine landesweite Ersatztagsregel.
+  const en2026 = namesAndDates(2026, 'NO');
+  assert.deepEqual(en2026, [
+    "2026-01-01 New Year's Day",
+    '2026-04-02 Maundy Thursday',
+    '2026-04-03 Good Friday',
+    '2026-04-05 Easter Sunday',
+    '2026-04-06 Easter Monday',
+    '2026-05-01 Labour Day',
+    '2026-05-14 Ascension Day',
+    '2026-05-17 Constitution Day',
+    '2026-05-24 Whit Sunday',
+    '2026-05-25 Whit Monday',
+    '2026-12-25 Christmas Day',
+    "2026-12-26 St. Stephen's Day",
+  ]);
+
+  const nb2026 = localHolidayFallback('NO', 'public', 2026, 'NB')
+    .map((h) => `${h.startDate} ${h.name}`).sort();
+  assert.ok(nb2026.includes('2026-05-17 17. mai'));
+  assert.ok(nb2026.includes('2026-04-02 Skjærtorsdag'));
+  assert.ok(nb2026.includes('2026-12-25 1. juledag'));
+});
+
+test('NO: 17. mai und 2. pinsedag koennen denselben Tag teilen (2027)', () => {
+  // 2027: Ostersonntag 28.3. -> 2. pinsedag = 17.5., und 17. mai ist derselbe
+  // Kalendertag. Zwei Zeilen, ein Datum - wie bei CA Weihnachten/Boxing Day.
+  const names2027 = namesAndDates(2027, 'NO');
+  const may17 = names2027.filter((n) => n.startsWith('2027-05-17'));
+  assert.deepEqual(may17, ['2027-05-17 Constitution Day', '2027-05-17 Whit Monday']);
 });
 
 test("GB (Schottland): St Andrew's Day ist mondayised (Act 2007 s.1(2), Review-Fund zu #965)", () => {
@@ -1596,6 +1631,24 @@ test('BR: vollstaendige Datumstabelle 2026 + 2027 (feste gesetzliche Daten + Kar
   ]);
 });
 
+test('sync: NO public holidays cache locally with NB names for a Norwegian data language', async () => {
+  const mock = makeApiMock();
+  __setFetchImpl(mock);
+  setConfig({ holiday_country: 'NO', holiday_show_public: '1', holiday_show_school: '0', language: 'nb' });
+
+  const res = await sync(true);
+
+  assert.equal(res.synced, SYNC_YEAR_SPAN * 12);
+  assert.deepEqual(mock.calls.filter((url) => url.includes('/PublicHolidays')), []);
+  const currentYear = new Date().getFullYear();
+  const namen = db.prepare(
+    "SELECT name FROM holiday_cache WHERE country='NO' AND type='public' AND year=?",
+  ).all(currentYear).map((r) => r.name);
+  assert.ok(namen.includes('17. mai'));
+  assert.ok(namen.includes('1. juledag'));
+  assert.equal(db.prepare("SELECT COUNT(*) c FROM holiday_cache WHERE country='NO' AND type='school'").get().c, 0);
+});
+
 test('sync: US public holidays cache locally - ohne einen einzigen /PublicHolidays-Abruf (#965 Review)', async () => {
   const mock = makeApiMock();
   __setFetchImpl(mock);
@@ -1652,7 +1705,7 @@ test('sync: school holidays for a #965 country store nothing and report incomple
 test('getCountries: prefers EN names and sorts alphabetically', async () => {
   __setFetchImpl(makeApiMock());
   const list = await getCountries();
-  // Neben den zwei API-Laendern erscheinen die sechs lokal berechneten
+  // Neben den zwei API-Laendern erscheinen die sieben lokal berechneten
   // Laender aus #965 - keins davon liefert der Mock, also gewinnt hier
   // niemand gegen die API, es wird nur ergaenzt.
   assert.deepEqual(list, [
@@ -1662,6 +1715,7 @@ test('getCountries: prefers EN names and sorts alphabetically', async () => {
     { isoCode: 'FR', name: 'France' },
     { isoCode: 'DE', name: 'Germany' },
     { isoCode: 'NZ', name: 'New Zealand', schoolHolidays: false },
+    { isoCode: 'NO', name: 'Norway', schoolHolidays: false },
     { isoCode: 'GB', name: 'United Kingdom', schoolHolidays: false },
     { isoCode: 'US', name: 'United States', schoolHolidays: false },
   ]);
@@ -1679,11 +1733,12 @@ test('getCountries: OpenHolidays nicht erreichbar -> die lokalen Laender bleiben
     { isoCode: 'BR', name: 'Brazil', schoolHolidays: false },
     { isoCode: 'CA', name: 'Canada', schoolHolidays: false },
     { isoCode: 'NZ', name: 'New Zealand', schoolHolidays: false },
+    { isoCode: 'NO', name: 'Norway', schoolHolidays: false },
     { isoCode: 'GB', name: 'United Kingdom', schoolHolidays: false },
     { isoCode: 'US', name: 'United States', schoolHolidays: false },
   ]);
   assert.ok(lines.warn.some((l) => /Countries/.test(l)),
-    'der Ausfall gehoert ins Log - sonst sieht der Betreiber nie, warum nur sechs Laender da sind');
+    'der Ausfall gehoert ins Log - sonst sieht der Betreiber nie, warum nur sieben Laender da sind');
 });
 
 test('sync: ein lokal berechnetes Land synchronisiert auch komplett offline (#965 Review)', async () => {

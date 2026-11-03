@@ -720,22 +720,22 @@ test('GET /holidays/countries: gestubbte API -> 200 mit sortierter Liste', async
   }));
   const res = await raw('GET', '/holidays/countries');
   assert.equal(res.status, 200);
-  // Neben AT/DE aus dem gestubbten API-Ergebnis erscheinen die sechs lokal
+  // Neben AT/DE aus dem gestubbten API-Ergebnis erscheinen die sieben lokal
   // berechneten Laender aus #965 (Australia, Brazil, Canada, New Zealand,
-  // United Kingdom, United States) - alle nach Name eingesortiert.
+  // Norway, United Kingdom, United States) - alle nach Name eingesortiert.
   assert.deepEqual(res.body.data.map((c) => c.isoCode),
-    ['AU', 'AT', 'BR', 'CA', 'DE', 'NZ', 'GB', 'US']);
+    ['AU', 'AT', 'BR', 'CA', 'DE', 'NZ', 'NO', 'GB', 'US']);
   holidays.__setFetchImpl(null);
 });
 test('GET /holidays/countries: API-Fehler -> 200 mit den lokalen Laendern (#965 Review)', async () => {
   // Vorher wurde aus dem Fetch-Fehler ein 502 und das Frontend fiel auf eine
-  // leere Liste zurueck - ausgerechnet die sechs Laender, die gar kein Netz
+  // leere Liste zurueck - ausgerechnet die lokalen Laender, die gar kein Netz
   // brauchen, waren dann nicht mehr waehlbar. Der Service degradiert jetzt auf
   // seine lokale Liste statt zu werfen.
   holidays.__setFetchImpl(async () => { throw new Error('network down'); });
   const res = await raw('GET', '/holidays/countries');
   assert.equal(res.status, 200);
-  assert.deepEqual(res.body.data.map((c) => c.isoCode), ['AU', 'BR', 'CA', 'NZ', 'GB', 'US']);
+  assert.deepEqual(res.body.data.map((c) => c.isoCode), ['AU', 'BR', 'CA', 'NZ', 'NO', 'GB', 'US']);
   assert.ok(res.body.data.every((c) => c.schoolHolidays === false));
   holidays.__setFetchImpl(null);
 });
