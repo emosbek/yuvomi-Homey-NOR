@@ -180,9 +180,9 @@ export async function render(container, { section, signal }) {
     const webhook = document.createElement('input');
     webhook.type = 'url';
     webhook.placeholder = 'https://…';
-    webhook.value = '';
+    webhook.value = settings.webhookUrl || '';
     webhook.autocomplete = 'off';
-    webhook.dataset.keep = settings.webhookSet ? '1' : '';
+    webhook.spellcheck = false;
 
     const tz = document.createElement('input');
     tz.type = 'text';
@@ -209,9 +209,7 @@ export async function render(container, { section, signal }) {
       formField(
         t('extensions.kids-chores.settings.webhook'),
         webhook,
-        settings.webhookSet
-          ? { hint: t('extensions.kids-chores.settings.webhookSet') }
-          : undefined,
+        { hint: t('extensions.kids-chores.settings.webhookHint') },
       ),
       formField(t('extensions.kids-chores.settings.timezone'), tz),
       formField(t('extensions.kids-chores.settings.progressIcon'), icon),
@@ -241,10 +239,8 @@ export async function render(container, { section, signal }) {
           timezone: tz.value,
           progressIcon: icon.value,
           notifyAdmin: notify.checked,
+          webhookUrl: webhook.value.trim(),
         };
-        const url = webhook.value.trim();
-        if (url) body.webhookUrl = url;
-        else if (!webhook.dataset.keep) body.webhookUrl = '';
         const next = await choresApi('/settings', { method: 'PUT', body, csrf, signal });
         if (gone) return;
         csrf = next.csrfToken || csrf;

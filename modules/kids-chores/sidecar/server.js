@@ -301,12 +301,12 @@ export function createKidsChoresHandler({
       }
 
       if (req.method === 'GET' && sub === '/chores') {
-        if (session.role !== 'admin' && access !== 'write') {
+        if (session.role !== 'admin') {
           throw new HttpError(403, 'forbidden', 'Admin only.');
         }
         reply(req, res, 200, {
           chores: store.listChores(),
-          settings: store.publicSettings(),
+          settings: store.publicSettings({ includeSecrets: true }),
           access,
           role: session.role,
         });
@@ -353,7 +353,7 @@ export function createKidsChoresHandler({
           access,
           role: session.role,
           chores: store.listChores(),
-          settings: store.publicSettings(),
+          settings: store.publicSettings({ includeSecrets: true }),
         });
         return;
       }
@@ -415,8 +415,16 @@ export function createKidsChoresHandler({
       if (req.method === 'PUT' && sub === '/settings') {
         if (session.role !== 'admin') throw new HttpError(403, 'forbidden', 'Admin only.');
         const body = await readBody(req);
-        await store.updateSettings(body || {});
-        reply(req, res, 200, { settings: store.publicSettings(), chores: store.listChores() });
+        try {
+          await store.updateSettings(body || {});
+        } catch (err) {
+          if (err.code === 'invalid') throw new HttpError(400, 'invalid', err.message);
+          throw err;
+        }
+        reply(req, res, 200, {
+          settings: store.publicSettings({ includeSecrets: true }),
+          chores: store.listChores(),
+        });
         return;
       }
 

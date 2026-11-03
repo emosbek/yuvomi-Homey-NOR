@@ -277,6 +277,60 @@ test('maxDailyPoints follows weekday chore sums', () => {
   assert.equal(maxDailyPoints([]), 0);
 });
 
+test('API keeps webhook URL visible on admin settings round-trip', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'kc-'));
+  const me = startMe((_req, res) => admin(res));
+  try {
+    const meUrl = await listen(me);
+    const server = createKidsChoresServer({ dataDir: dir, yuvomiUrl: meUrl });
+    const base = await listen(server);
+    const first = await call(base, '/api/extensions/kids-chores/today', { cookie: 'yuvomi.sid=ok' });
+    const jar = `yuvomi.sid=ok; ${first.cookie}`;
+    const csrf = first.body.csrfToken;
+    const hook = 'https://webhook.homey.app/kids-chores-test';
+
+    const saved = await call(base, '/api/extensions/kids-chores/settings', {
+      method: 'PUT',
+      cookie: jar,
+      csrf,
+      json: { webhookUrl: hook, pointGoal: 10 },
+    });
+    assert.equal(saved.status, 200, JSON.stringify(saved.body));
+    assert.equal(saved.body.settings.webhookSet, true);
+    assert.equal(saved.body.settings.webhookUrl, hook);
+
+    const chores = await call(base, '/api/extensions/kids-chores/chores', { cookie: jar });
+    assert.equal(chores.body.settings.webhookUrl, hook);
+
+    const today = await call(base, '/api/extensions/kids-chores/today', { cookie: jar });
+    assert.equal(today.body.settings.webhookUrl, undefined, 'overview must not leak the webhook URL');
+    assert.equal(today.body.settings.webhookSet, true);
+
+    const bare = await call(base, '/api/extensions/kids-chores/settings', {
+      method: 'PUT',
+      cookie: jar,
+      csrf,
+      json: { webhookUrl: 'webhook.homey.app/no-scheme' },
+    });
+    assert.equal(bare.status, 200, JSON.stringify(bare.body));
+    assert.equal(bare.body.settings.webhookUrl, 'https://webhook.homey.app/no-scheme');
+
+    const bad = await call(base, '/api/extensions/kids-chores/settings', {
+      method: 'PUT',
+      cookie: jar,
+      csrf,
+      json: { webhookUrl: 'not a url at all @@' },
+    });
+    assert.equal(bad.status, 400);
+    assert.equal(bad.body.reason, 'invalid');
+
+    await close(server);
+  } finally {
+    await close(me);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('API stores displayTitle for the overview widget', async () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'kc-'));
   const me = startMe((_req, res) => admin(res));

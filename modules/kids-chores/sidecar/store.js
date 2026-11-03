@@ -55,6 +55,21 @@ function cleanChore(raw) {
   };
 }
 
+/** Accept http(s) URLs; prepend https:// when the scheme is missing. */
+function normalizeWebhookUrl(url) {
+  const raw = String(url || '').trim();
+  if (!raw || raw.length > 2000) return null;
+  const withScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(raw) ? raw : `https://${raw}`;
+  try {
+    const parsed = new URL(withScheme);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    if (!parsed.hostname) return null;
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
 function cleanSettings(raw, fallback) {
   const base = { ...fallback };
   if (!raw || typeof raw !== 'object') return base;
@@ -72,14 +87,13 @@ function cleanSettings(raw, fallback) {
     const url = String(raw.webhookUrl ?? '').trim();
     if (!url) base.webhookUrl = null;
     else {
-      try {
-        const parsed = new URL(url);
-        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw new Error('bad');
-        if (url.length > 2000) throw new Error('bad');
-        base.webhookUrl = url;
-      } catch {
-        /* keep previous */
+      const normalized = normalizeWebhookUrl(url);
+      if (!normalized) {
+        const err = new Error('Webhook URL is invalid.');
+        err.code = 'invalid';
+        throw err;
       }
+      base.webhookUrl = normalized;
     }
   }
   if (raw.notifyAdmin !== undefined) base.notifyAdmin = raw.notifyAdmin !== false;
@@ -200,7 +214,7 @@ export function createStore(dir) {
     settings() {
       return { ...state.settings, webhookSet: Boolean(state.settings.webhookUrl) };
     },
-    publicSettings() {
+    publicSettings({ includeSecrets = false } = {}) {
       const s = state.settings;
       return {
         pointGoal: s.pointGoal,
@@ -210,6 +224,8 @@ export function createStore(dir) {
         timezone: s.timezone,
         progressIcon: s.progressIcon === 'star' ? 'star' : 'sun',
         webhookSet: Boolean(s.webhookUrl),
+        /* Only admin settings/chores responses include the URL itself. */
+        ...(includeSecrets ? { webhookUrl: s.webhookUrl || '' } : {}),
       };
     },
     updateSettings(patch) {
