@@ -21,7 +21,12 @@ The Homey gateway already mounts Kids Chores when the folder is present. Update 
 curl -fsSL https://raw.githubusercontent.com/emosbek/yuvomi-Homey-NOR/cursor/kids-chores-be88/modules/homey/install-pi.sh | sudo bash
 ```
 
-(Or keep using your tip-branch curl once this branch is merged into it.)
+The script must check out branch `cursor/kids-chores-be88` (its default). If an older run left you on another branch, force it:
+
+```bash
+sudo YUVOMI_BRANCH=cursor/kids-chores-be88 bash -c \
+  'curl -fsSL https://raw.githubusercontent.com/emosbek/yuvomi-Homey-NOR/cursor/kids-chores-be88/modules/homey/install-pi.sh | bash'
+```
 
 Then in Yuvomi: **Settings → Modules → Active modules** → enable **Kids Chores**. Give members `ext:kids-chores` write access under Roles & permissions.
 
