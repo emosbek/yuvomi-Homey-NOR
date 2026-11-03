@@ -37,6 +37,7 @@
   "settings.testWebhook": "Send test-webhook",
   "settings.webhookOk": "Webhook godtok testen",
   "settings.choresTitle": "Oppgaver",
+  "settings.noChoresYet": "Ingen oppgaver ennå. Legg til den første under.",
   "settings.addChore": "Legg til oppgave",
   "settings.choreTitle": "Tittel",
   "settings.chorePoints": "Poeng",

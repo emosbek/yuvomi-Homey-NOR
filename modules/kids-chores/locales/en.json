@@ -37,6 +37,7 @@
   "settings.testWebhook": "Send test webhook",
   "settings.webhookOk": "Webhook accepted the test",
   "settings.choresTitle": "Chores",
+  "settings.noChoresYet": "No chores yet. Add the first one below.",
   "settings.addChore": "Add a chore",
   "settings.choreTitle": "Title",
   "settings.chorePoints": "Points",

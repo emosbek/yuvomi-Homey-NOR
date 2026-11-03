@@ -1,26 +1,53 @@
 import { t } from '/i18n.js';
+import { ensureStyle } from '/utils/component-style.js';
 import { showToast } from '/utils/toast-show.js';
 import { WEEKDAYS, choresApi } from './browser.js';
 
-function field(labelText, control) {
+const STYLE = '/api/v1/modules/assets/kids-chores/style.css';
+
+let fieldSeq = 0;
+function nextId(prefix) {
+  fieldSeq += 1;
+  return `kc-${prefix}-${fieldSeq}`;
+}
+
+function formField(labelText, control, { hint } = {}) {
+  const wrap = document.createElement('div');
+  wrap.className = 'form-field';
+  const id = control.id || nextId('field');
+  control.id = id;
+  if (!control.className) control.className = 'form-input';
+  else if (!/\bform-input\b/.test(control.className)) control.className += ' form-input';
+
   const label = document.createElement('label');
-  const span = document.createElement('span');
-  span.textContent = labelText;
-  label.append(span, control);
-  return label;
+  label.className = 'form-label';
+  label.htmlFor = id;
+  label.textContent = labelText;
+  wrap.append(label, control);
+  if (hint) {
+    const p = document.createElement('p');
+    p.className = 'form-hint';
+    p.textContent = hint;
+    wrap.append(p);
+  }
+  return wrap;
 }
 
 function daysPicker(selected) {
   const wrap = document.createElement('div');
   wrap.className = 'kc-days';
+  wrap.setAttribute('role', 'group');
   const set = new Set(selected || [1, 2, 3, 4, 5]);
   for (const { day, key } of WEEKDAYS) {
     const lab = document.createElement('label');
+    lab.className = 'kc-days__day';
     const box = document.createElement('input');
     box.type = 'checkbox';
     box.value = String(day);
     box.checked = set.has(day);
-    lab.append(box, document.createTextNode(t(`extensions.kids-chores.${key}`)));
+    const text = document.createElement('span');
+    text.textContent = t(`extensions.kids-chores.${key}`);
+    lab.append(box, text);
     wrap.append(lab);
   }
   return wrap;
@@ -30,15 +57,24 @@ function readDays(wrap) {
   return [...wrap.querySelectorAll('input:checked')].map((el) => Number(el.value));
 }
 
+function actionsRow(...buttons) {
+  const row = document.createElement('div');
+  row.className = 'settings-form-actions kc-settings-actions';
+  for (const btn of buttons) row.append(btn);
+  return row;
+}
+
 export async function render(container, { section, signal }) {
   if (section !== 'household') {
     container.replaceChildren();
     return;
   }
 
+  ensureStyle(STYLE);
   container.replaceChildren();
+
   const root = document.createElement('div');
-  root.className = 'kc-admin-form';
+  root.className = 'kc-settings';
   container.append(root);
 
   let csrf = '';
@@ -54,10 +90,11 @@ export async function render(container, { section, signal }) {
   hint.textContent = t('extensions.kids-chores.settings.householdHint');
   root.append(hint);
 
-  const settingsBox = document.createElement('div');
-  settingsBox.className = 'kc-admin-form';
+  const settingsForm = document.createElement('div');
+  settingsForm.className = 'settings-form settings-form--compact kc-settings-form';
   const choresBox = document.createElement('div');
-  root.append(settingsBox, choresBox);
+  choresBox.className = 'kc-settings-chores';
+  root.append(settingsForm, choresBox);
 
   async function reload() {
     const data = await choresApi('/chores', { signal, csrf });
@@ -68,26 +105,30 @@ export async function render(container, { section, signal }) {
   }
 
   function paintSettings(settings) {
-    settingsBox.replaceChildren();
+    settingsForm.replaceChildren();
+
     const goal = document.createElement('input');
     goal.type = 'number';
     goal.min = '1';
     goal.max = '100000';
     goal.value = String(settings.pointGoal ?? 10);
+    goal.inputMode = 'numeric';
 
     const congrats = document.createElement('textarea');
-    congrats.rows = 2;
+    congrats.rows = 3;
     congrats.value = settings.congratsMessage || '';
 
     const webhook = document.createElement('input');
     webhook.type = 'url';
     webhook.placeholder = 'https://…';
     webhook.value = '';
+    webhook.autocomplete = 'off';
     webhook.dataset.keep = settings.webhookSet ? '1' : '';
 
     const tz = document.createElement('input');
     tz.type = 'text';
     tz.value = settings.timezone || 'Europe/Oslo';
+    tz.autocomplete = 'off';
 
     const icon = document.createElement('select');
     for (const value of ['sun', 'star']) {
@@ -98,34 +139,36 @@ export async function render(container, { section, signal }) {
       icon.append(opt);
     }
 
+    settingsForm.append(
+      formField(t('extensions.kids-chores.settings.pointGoal'), goal),
+      formField(t('extensions.kids-chores.settings.congrats'), congrats),
+      formField(
+        t('extensions.kids-chores.settings.webhook'),
+        webhook,
+        settings.webhookSet
+          ? { hint: t('extensions.kids-chores.settings.webhookSet') }
+          : undefined,
+      ),
+      formField(t('extensions.kids-chores.settings.timezone'), tz),
+      formField(t('extensions.kids-chores.settings.progressIcon'), icon),
+    );
+
+    const notifyWrap = document.createElement('label');
+    notifyWrap.className = 'kc-check-row';
     const notify = document.createElement('input');
     notify.type = 'checkbox';
     notify.checked = settings.notifyAdmin !== false;
-
-    settingsBox.append(
-      field(t('extensions.kids-chores.settings.pointGoal'), goal),
-      field(t('extensions.kids-chores.settings.congrats'), congrats),
-      field(t('extensions.kids-chores.settings.webhook'), webhook),
-      field(t('extensions.kids-chores.settings.timezone'), tz),
-      field(t('extensions.kids-chores.settings.progressIcon'), icon),
-    );
-
-    const notifyLab = document.createElement('label');
-    notifyLab.append(notify, document.createTextNode(` ${t('extensions.kids-chores.settings.notifyAdmin')}`));
-    settingsBox.append(notifyLab);
-
-    if (settings.webhookSet) {
-      const note = document.createElement('p');
-      note.className = 'form-hint';
-      note.textContent = t('extensions.kids-chores.settings.webhookSet');
-      settingsBox.append(note);
-    }
+    const notifyText = document.createElement('span');
+    notifyText.textContent = t('extensions.kids-chores.settings.notifyAdmin');
+    notifyWrap.append(notify, notifyText);
+    settingsForm.append(notifyWrap);
 
     const save = document.createElement('button');
     save.type = 'button';
     save.className = 'btn btn--primary';
     save.textContent = t('extensions.kids-chores.settings.save');
     save.addEventListener('click', async () => {
+      save.disabled = true;
       try {
         const body = {
           pointGoal: Number(goal.value),
@@ -145,9 +188,9 @@ export async function render(container, { section, signal }) {
       } catch (err) {
         if (err.csrfToken) csrf = err.csrfToken;
         showToast({ message: err.message, variant: 'danger' });
+        save.disabled = false;
       }
     }, { signal });
-    settingsBox.append(save);
 
     const test = document.createElement('button');
     test.type = 'button';
@@ -155,6 +198,7 @@ export async function render(container, { section, signal }) {
     test.textContent = t('extensions.kids-chores.settings.testWebhook');
     test.disabled = !settings.webhookSet;
     test.addEventListener('click', async () => {
+      test.disabled = true;
       try {
         const next = await choresApi('/test-webhook', { method: 'POST', body: {}, csrf, signal });
         if (gone) return;
@@ -163,9 +207,12 @@ export async function render(container, { section, signal }) {
       } catch (err) {
         if (err.csrfToken) csrf = err.csrfToken;
         showToast({ message: err.message, variant: 'danger' });
+      } finally {
+        if (!gone) test.disabled = !settings.webhookSet;
       }
     }, { signal });
-    settingsBox.append(test);
+
+    settingsForm.append(actionsRow(save, test));
   }
 
   function paintChores(chores) {
@@ -174,10 +221,18 @@ export async function render(container, { section, signal }) {
     heading.textContent = t('extensions.kids-chores.settings.choresTitle');
     choresBox.append(heading);
 
+    if (!chores.length) {
+      const empty = document.createElement('p');
+      empty.className = 'form-hint';
+      empty.textContent = t('extensions.kids-chores.settings.noChoresYet');
+      choresBox.append(empty);
+    }
+
     for (const chore of chores) {
       const row = document.createElement('div');
       row.className = 'kc-chore-row';
       const left = document.createElement('div');
+      left.className = 'kc-chore-row__text';
       const name = document.createElement('strong');
       name.textContent = chore.title;
       const meta = document.createElement('div');
@@ -195,6 +250,7 @@ export async function render(container, { section, signal }) {
       del.className = 'btn btn--danger';
       del.textContent = t('extensions.kids-chores.settings.delete');
       del.addEventListener('click', async () => {
+        del.disabled = true;
         try {
           const next = await choresApi(`/chores/${chore.id}`, { method: 'DELETE', csrf, signal });
           if (gone) return;
@@ -203,6 +259,7 @@ export async function render(container, { section, signal }) {
         } catch (err) {
           if (err.csrfToken) csrf = err.csrfToken;
           showToast({ message: err.message, variant: 'danger' });
+          del.disabled = false;
         }
       }, { signal });
       row.append(left, del);
@@ -210,23 +267,36 @@ export async function render(container, { section, signal }) {
     }
 
     const form = document.createElement('div');
-    form.className = 'kc-admin-form';
+    form.className = 'settings-form settings-form--compact kc-settings-form';
     const addTitle = document.createElement('h3');
     addTitle.textContent = t('extensions.kids-chores.settings.addChore');
+
     const name = document.createElement('input');
     name.type = 'text';
     name.maxLength = 80;
+    name.autocomplete = 'off';
+
     const points = document.createElement('input');
     points.type = 'number';
     points.min = '0';
     points.max = '1000';
     points.value = '1';
+    points.inputMode = 'numeric';
+
     const days = daysPicker([1, 2, 3, 4, 5]);
+    const daysField = document.createElement('div');
+    daysField.className = 'form-field';
+    const daysLabel = document.createElement('span');
+    daysLabel.className = 'form-label';
+    daysLabel.textContent = t('extensions.kids-chores.settings.choreDays');
+    daysField.append(daysLabel, days);
+
     const add = document.createElement('button');
     add.type = 'button';
     add.className = 'btn btn--primary';
     add.textContent = t('extensions.kids-chores.settings.add');
     add.addEventListener('click', async () => {
+      add.disabled = true;
       try {
         const next = await choresApi('/chores', {
           method: 'POST',
@@ -246,15 +316,16 @@ export async function render(container, { section, signal }) {
       } catch (err) {
         if (err.csrfToken) csrf = err.csrfToken;
         showToast({ message: err.message, variant: 'danger' });
+        add.disabled = false;
       }
     }, { signal });
 
     form.append(
       addTitle,
-      field(t('extensions.kids-chores.settings.choreTitle'), name),
-      field(t('extensions.kids-chores.settings.chorePoints'), points),
-      field(t('extensions.kids-chores.settings.choreDays'), days),
-      add,
+      formField(t('extensions.kids-chores.settings.choreTitle'), name),
+      formField(t('extensions.kids-chores.settings.chorePoints'), points),
+      daysField,
+      actionsRow(add),
     );
     choresBox.append(form);
   }
