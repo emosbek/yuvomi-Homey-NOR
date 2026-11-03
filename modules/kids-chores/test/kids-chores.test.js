@@ -1,0 +1,204 @@
+import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import http from 'node:http';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { test } from 'node:test';
+import { createKidsChoresServer } from '../sidecar/server.js';
+import { createStore, localDateKey, localIsoWeekday } from '../sidecar/store.js';
+
+function listen(server) {
+  return new Promise((resolve) => {
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      resolve(`http://127.0.0.1:${address.port}`);
+    });
+  });
+}
+
+function close(server) {
+  return new Promise((resolve) => server.close(() => resolve()));
+}
+
+function cookiePair(response) {
+  const set = typeof response.headers.getSetCookie === 'function'
+    ? response.headers.getSetCookie()
+    : [response.headers.get('set-cookie')].filter(Boolean);
+  return set.map((value) => value.split(';')[0]).join('; ');
+}
+
+async function call(base, pathname, { method = 'GET', cookie = '', json, csrf, origin } = {}) {
+  const headers = {
+    Accept: 'application/json',
+    Origin: origin || base,
+    ...(cookie ? { Cookie: cookie } : {}),
+    ...(json !== undefined ? { 'Content-Type': 'application/json' } : {}),
+    ...(csrf ? { 'X-Kids-Chores-CSRF': csrf } : {}),
+  };
+  const response = await fetch(`${base}${pathname}`, {
+    method,
+    headers,
+    body: json !== undefined ? JSON.stringify(json) : undefined,
+  });
+  const text = await response.text();
+  let body = null;
+  try { body = text ? JSON.parse(text) : null; } catch { body = text; }
+  return { status: response.status, body, cookie: cookiePair(response) };
+}
+
+function startMe(handler) {
+  const server = http.createServer((req, res) => handler(req, res));
+  return server;
+}
+
+function admin(res) {
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({
+    user: { id: 7, role: 'admin', username: 'ada', display_name: 'Ada' },
+    permissions: { admin: true, modules: { 'ext:kids-chores': 'write' } },
+  }));
+}
+
+test('local date helpers use the household timezone', () => {
+  const noonUtc = new Date('2026-11-03T12:00:00Z');
+  assert.equal(localDateKey('Europe/Oslo', noonUtc), '2026-11-03');
+  assert.equal(localIsoWeekday('Europe/Oslo', noonUtc), 2);
+});
+
+test('store completes a weekday chore and resets after the day key changes', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'kc-'));
+  try {
+    const store = createStore(dir);
+    await store.addChore({ title: 'Wash hands', points: 2, days: [1, 2, 3, 4, 5] });
+    const chore = store.listChores()[0];
+    const monday = new Date('2026-11-02T10:00:00Z'); // Mon in Oslo
+    await store.completeChore(chore.id, 7, monday);
+    const mondayKey = localDateKey('Europe/Oslo', monday);
+    assert.ok(store.snapshot().completions[mondayKey][chore.id]);
+
+    const tuesday = new Date('2026-11-03T10:00:00Z');
+    const tueKey = localDateKey('Europe/Oslo', tuesday);
+    assert.equal(store.snapshot().completions[tueKey], undefined);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('API: admin creates chore, member completes it, goal fires webhook once', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'kc-'));
+  const hooks = [];
+  const webhook = http.createServer((req, res) => {
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', () => {
+      hooks.push(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+      res.writeHead(200);
+      res.end('ok');
+    });
+  });
+  const me = startMe((_req, res) => admin(res));
+  try {
+    const meUrl = await listen(me);
+    const hookUrl = await listen(webhook);
+    const fixed = new Date('2026-11-03T10:00:00Z'); // Tue Oslo
+    const server = createKidsChoresServer({
+      dataDir: dir,
+      yuvomiUrl: meUrl,
+      now: () => fixed,
+    });
+    const base = await listen(server);
+    const first = await call(base, '/api/extensions/kids-chores/today', { cookie: 'yuvomi.sid=ok' });
+    assert.equal(first.status, 200, JSON.stringify(first.body));
+    const jar = `yuvomi.sid=ok; ${first.cookie}`;
+    const csrf = first.body.csrfToken;
+
+    const created = await call(base, '/api/extensions/kids-chores/chores', {
+      method: 'POST',
+      cookie: jar,
+      csrf,
+      json: { title: 'Do homework', points: 5, days: [1, 2, 3, 4, 5] },
+    });
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+    const choreId = created.body.chores[0].id;
+
+    const settings = await call(base, '/api/extensions/kids-chores/settings', {
+      method: 'PUT',
+      cookie: jar,
+      csrf,
+      json: { pointGoal: 5, webhookUrl: `${hookUrl}/reward`, notifyAdmin: true },
+    });
+    assert.equal(settings.status, 200, JSON.stringify(settings.body));
+
+    const done = await call(base, '/api/extensions/kids-chores/complete', {
+      method: 'POST',
+      cookie: jar,
+      csrf,
+      json: { id: choreId },
+    });
+    assert.equal(done.status, 200, JSON.stringify(done.body));
+    assert.equal(done.body.goalReached, true);
+    assert.equal(done.body.open.length, 0);
+    assert.equal(hooks.length, 1);
+    assert.equal(hooks[0].event, 'kids_chores.goal_reached');
+
+    const again = await call(base, '/api/extensions/kids-chores/complete', {
+      method: 'POST',
+      cookie: jar,
+      csrf,
+      json: { id: choreId },
+    });
+    assert.equal(again.status, 200);
+    assert.equal(hooks.length, 1, 'webhook only once per day');
+
+    await close(server);
+  } finally {
+    await close(me);
+    await close(webhook);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('API refuses completing a chore not scheduled today', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'kc-'));
+  const me = startMe((_req, res) => admin(res));
+  try {
+    const meUrl = await listen(me);
+    const sunday = new Date('2026-11-01T12:00:00Z'); // Sun Oslo
+    const server = createKidsChoresServer({
+      dataDir: dir,
+      yuvomiUrl: meUrl,
+      now: () => sunday,
+    });
+    const base = await listen(server);
+    const first = await call(base, '/api/extensions/kids-chores/today', { cookie: 'yuvomi.sid=ok' });
+    assert.equal(first.status, 200, JSON.stringify(first.body));
+    const jar = `yuvomi.sid=ok; ${first.cookie}`;
+    const csrf = first.body.csrfToken;
+
+    const created = await call(base, '/api/extensions/kids-chores/chores', {
+      method: 'POST',
+      cookie: jar,
+      csrf,
+      json: { title: 'School only', points: 1, days: [1, 2, 3, 4, 5] },
+    });
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+    const choreId = created.body.chores[0].id;
+
+    const today = await call(base, '/api/extensions/kids-chores/today', { cookie: jar });
+    assert.equal(today.body.items.length, 0);
+
+    const done = await call(base, '/api/extensions/kids-chores/complete', {
+      method: 'POST',
+      cookie: jar,
+      csrf,
+      json: { id: choreId },
+    });
+    assert.equal(done.status, 400);
+    assert.equal(done.body.reason, 'day');
+
+    await close(server);
+  } finally {
+    await close(me);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

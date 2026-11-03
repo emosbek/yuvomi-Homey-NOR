@@ -5,6 +5,9 @@
  * not mount /api/extensions/<id>. This process listens on the public port,
  * handles that prefix itself, and forwards every other request to Yuvomi.
  *
+ * When modules/kids-chores is present, its API is mounted here too so the Pi
+ * only needs one public gateway process.
+ *
  *   PORT=3001 npm run dev
  *   node modules/homey/gateway.js
  *
@@ -13,15 +16,18 @@
  * YUVOMI_INTERNAL_URL  where this process asks /api/v1/auth/me (default the upstream)
  * HOMEY_DATA_DIR       state directory (default data/homey)
  * HOMEY_ALLOW_LOOPBACK set to 1 only for tests against a Homey on this machine
+ * KIDS_CHORES_DATA_DIR state for Kids Chores when that module folder is present
  */
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createHomeyHandler } from './sidecar/server.js';
 
 const ALERT_SOURCE = readFileSync(new URL('./alert.js', import.meta.url));
+const KIDS_CHORES_SERVER = fileURLToPath(new URL('../kids-chores/sidecar/server.js', import.meta.url));
+const KIDS_CHORES_PRESENT = existsSync(KIDS_CHORES_SERVER);
 
 const HOP = new Set(['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'upgrade', 'transfer-encoding']);
 const ALERT_SCRIPT = '<script type="module" src="/homey-alert.js"></script>';
@@ -51,18 +57,36 @@ function forwardHeaders(incoming) {
   return headers;
 }
 
+function loadKidsChoresHandler(dataDir, yuvomiUrl) {
+  if (!KIDS_CHORES_PRESENT) return Promise.resolve(null);
+  return import(pathToFileURL(KIDS_CHORES_SERVER).href).then((mod) => (
+    mod.createKidsChoresHandler({ dataDir, yuvomiUrl })
+  ));
+}
+
 export function createGateway({
   upstream = process.env.YUVOMI_UPSTREAM || 'http://127.0.0.1:3001',
   yuvomiUrl = process.env.YUVOMI_INTERNAL_URL || upstream,
   dataDir = process.env.HOMEY_DATA_DIR || path.resolve('data/homey'),
   allowLoopback = process.env.HOMEY_ALLOW_LOOPBACK === '1',
+  kidsChoresDataDir = process.env.KIDS_CHORES_DATA_DIR || path.resolve('data/kids-chores'),
+  kidsChores = undefined,
 } = {}) {
   const target = splitOrigin(upstream);
   const homey = createHomeyHandler({ dataDir, yuvomiUrl, allowLoopback });
+  const choresReady = kidsChores
+    ? Promise.resolve(kidsChores)
+    : loadKidsChoresHandler(kidsChoresDataDir, yuvomiUrl);
 
   function isHomey(req) {
     const pathName = (req.url || '/').split('?')[0];
     return pathName === '/api/extensions/homey' || pathName.startsWith('/api/extensions/homey/');
+  }
+
+  function isKidsChores(req) {
+    const pathName = (req.url || '/').split('?')[0];
+    return pathName === '/api/extensions/kids-chores'
+      || pathName.startsWith('/api/extensions/kids-chores/');
   }
 
   function proxy(req, res) {
@@ -141,11 +165,38 @@ export function createGateway({
       homey(req, res);
       return;
     }
+    if (isKidsChores(req)) {
+      choresReady.then((handler) => {
+        if (!handler) {
+          const body = JSON.stringify({ error: 'Kids Chores is not installed.', reason: 'missing' });
+          res.writeHead(404, {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Content-Length': Buffer.byteLength(body),
+            'Cache-Control': 'no-store',
+          });
+          res.end(body);
+          return;
+        }
+        handler(req, res);
+      }).catch((err) => {
+        console.error('[gateway] kids-chores', err);
+        if (!res.headersSent) {
+          const body = JSON.stringify({ error: 'Kids Chores failed to start.', reason: 'internal' });
+          res.writeHead(500, {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Content-Length': Buffer.byteLength(body),
+            'Cache-Control': 'no-store',
+          });
+          res.end(body);
+        }
+      });
+      return;
+    }
     proxy(req, res);
   });
 
   server.on('upgrade', (req, socket, head) => {
-    if (isHomey(req)) {
+    if (isHomey(req) || isKidsChores(req)) {
       socket.destroy();
       return;
     }
