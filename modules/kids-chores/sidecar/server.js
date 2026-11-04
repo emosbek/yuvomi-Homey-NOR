@@ -216,8 +216,8 @@ function todayState(store, now = new Date()) {
       points: c.points,
       done: Boolean(doneMap[c.id]),
       completedAt: doneMap[c.id]?.at || null,
+      requireAboveDone: c.requireAboveDone === true,
     })),
-    settings.sequentialUnlock === true,
   );
   /* Locked chores stay out of the UI until the ones above are done. */
   const items = ranked.filter((i) => !i.locked).map(({ locked, ...rest }) => rest);

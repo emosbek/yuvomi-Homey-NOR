@@ -20,7 +20,6 @@ function empty() {
       webhookUrl: null,
       notifyAdmin: true,
       showOnWall: false,
-      sequentialUnlock: false,
       timezone: 'Europe/Oslo',
       progressIcon: 'sun',
     },
@@ -65,6 +64,8 @@ function cleanChore(raw) {
     days: cleanDays(raw.days),
     active: raw.active !== false,
     sort: Number.isFinite(Number(raw.sort)) ? Number(raw.sort) : 0,
+    /* Only this chore waits for the ones above it in today’s list. */
+    requireAboveDone: raw.requireAboveDone === true,
     webhookUrl: cleanChoreWebhook(raw.webhookUrl),
     resetWebhookUrl: cleanChoreWebhook(raw.resetWebhookUrl),
   };
@@ -113,7 +114,6 @@ function cleanSettings(raw, fallback) {
   }
   if (raw.notifyAdmin !== undefined) base.notifyAdmin = raw.notifyAdmin !== false;
   if (raw.showOnWall !== undefined) base.showOnWall = raw.showOnWall === true;
-  if (raw.sequentialUnlock !== undefined) base.sequentialUnlock = raw.sequentialUnlock === true;
   if (raw.timezone !== undefined) {
     const tz = String(raw.timezone || '').trim();
     if (tz && tz.length <= 64) {
@@ -177,25 +177,19 @@ export function localIsoWeekday(timeZone, now = new Date()) {
 }
 
 /**
- * List order is the hierarchy: until every chore above is done, later ones
- * stay locked (and the UI hides them). Done chores stay unlocked so progress
- * remains visible.
+ * Per-chore hierarchy: a chore with `requireAboveDone` stays locked (and is
+ * hidden) until every earlier chore in today’s sorted list is done. Chores
+ * without the flag stay visible regardless of what is above them.
  *
- * @param {Array<{ id: string, done?: boolean }>} items  already sorted for today
- * @param {boolean} sequentialUnlock
+ * @param {Array<{ id: string, done?: boolean, requireAboveDone?: boolean }>} items
  */
-export function applySequentialLock(items, sequentialUnlock) {
+export function applySequentialLock(items) {
   const list = Array.isArray(items) ? items : [];
-  if (!sequentialUnlock) {
-    return list.map((item) => ({ ...item, locked: false }));
-  }
-  let lockRest = false;
+  let incompleteAbove = false;
   return list.map((item) => {
-    if (lockRest && !item.done) {
-      return { ...item, locked: true };
-    }
-    if (!item.done) lockRest = true;
-    return { ...item, locked: false };
+    const locked = item.requireAboveDone === true && incompleteAbove && !item.done;
+    if (!item.done) incompleteAbove = true;
+    return { ...item, locked };
   });
 }
 
@@ -262,7 +256,6 @@ export function createStore(dir) {
         displayTitle: s.displayTitle || '',
         notifyAdmin: s.notifyAdmin !== false,
         showOnWall: s.showOnWall === true,
-        sequentialUnlock: s.sequentialUnlock === true,
         timezone: s.timezone,
         progressIcon: s.progressIcon === 'star' ? 'star' : 'sun',
         webhookSet: Boolean(s.webhookUrl),

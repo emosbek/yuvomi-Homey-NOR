@@ -107,6 +107,33 @@ function choreWebhookField({
   return formField(t(labelKey), input, { hint: t(hintKey) });
 }
 
+/** Per-chore “wait for chores above” switch; returns { field, input }. */
+function requireAboveDoneField(checked = false) {
+  const wrap = document.createElement('div');
+  wrap.className = 'form-switch kc-wall-switch-wrap';
+  const row = document.createElement('label');
+  row.className = 'toggle-row toggle-row--switch kc-wall-switch';
+  const label = document.createElement('span');
+  label.className = 'toggle-row__label';
+  label.textContent = t('extensions.kids-chores.settings.choreRequireAbove');
+  const toggle = document.createElement('span');
+  toggle.className = 'toggle';
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  input.setAttribute('role', 'switch');
+  input.checked = checked === true;
+  const track = document.createElement('span');
+  track.className = 'toggle__track';
+  track.setAttribute('aria-hidden', 'true');
+  toggle.append(input, track);
+  row.append(label, toggle);
+  const hint = document.createElement('p');
+  hint.className = 'form-hint';
+  hint.textContent = t('extensions.kids-chores.settings.choreRequireAboveHint');
+  wrap.append(row, hint);
+  return { field: wrap, input };
+}
+
 export async function render(container, { section, signal }) {
   if (section !== 'household') {
     container.replaceChildren();
@@ -264,30 +291,6 @@ export async function render(container, { section, signal }) {
     wallField.append(wallSwitch, wallHint);
     settingsForm.append(wallField);
 
-    const seqSwitch = document.createElement('label');
-    seqSwitch.className = 'toggle-row toggle-row--switch kc-wall-switch';
-    const seqLabel = document.createElement('span');
-    seqLabel.className = 'toggle-row__label';
-    seqLabel.textContent = t('extensions.kids-chores.settings.sequentialUnlock');
-    const seqToggle = document.createElement('span');
-    seqToggle.className = 'toggle';
-    const seqInput = document.createElement('input');
-    seqInput.type = 'checkbox';
-    seqInput.setAttribute('role', 'switch');
-    seqInput.checked = settings.sequentialUnlock === true;
-    const seqTrack = document.createElement('span');
-    seqTrack.className = 'toggle__track';
-    seqTrack.setAttribute('aria-hidden', 'true');
-    seqToggle.append(seqInput, seqTrack);
-    seqSwitch.append(seqLabel, seqToggle);
-    const seqHint = document.createElement('p');
-    seqHint.className = 'form-hint';
-    seqHint.textContent = t('extensions.kids-chores.settings.sequentialUnlockHint');
-    const seqField = document.createElement('div');
-    seqField.className = 'form-switch kc-wall-switch-wrap';
-    seqField.append(seqSwitch, seqHint);
-    settingsForm.append(seqField);
-
     const save = document.createElement('button');
     save.type = 'button';
     save.className = 'btn btn--primary';
@@ -303,7 +306,6 @@ export async function render(container, { section, signal }) {
           progressIcon: icon.value,
           notifyAdmin: notify.checked,
           showOnWall: wallInput.checked,
-          sequentialUnlock: seqInput.checked,
           webhookUrl: webhook.value.trim(),
         };
         const next = await choresApi('/settings', { method: 'PUT', body, csrf, signal });
@@ -477,6 +479,9 @@ export async function render(container, { section, signal }) {
         if (chore.webhookUrl || chore.resetWebhookUrl) {
           bits.push(t('extensions.kids-chores.settings.choreHasWebhook'));
         }
+        if (chore.requireAboveDone) {
+          bits.push(t('extensions.kids-chores.settings.choreHasRequireAbove'));
+        }
         meta.textContent = bits.filter(Boolean).join(' · ');
         left.append(name, meta);
 
@@ -558,6 +563,7 @@ export async function render(container, { section, signal }) {
             hintKey: 'extensions.kids-chores.settings.choreResetWebhookHint',
           });
           const resetWebhookInput = resetWebhookField.querySelector('input');
+          const requireAbove = requireAboveDoneField(chore.requireAboveDone === true);
           const days = daysPicker(chore.days);
           const saveEdit = document.createElement('button');
           saveEdit.type = 'button';
@@ -580,6 +586,7 @@ export async function render(container, { section, signal }) {
                   title: titleInput.value,
                   points: Number(pointsInput.value),
                   days: readDays(days),
+                  requireAboveDone: requireAbove.input.checked,
                   webhookUrl: webhookInput.value.trim(),
                   resetWebhookUrl: resetWebhookInput.value.trim(),
                 },
@@ -600,6 +607,7 @@ export async function render(container, { section, signal }) {
           editor.append(
             formField(t('extensions.kids-chores.settings.choreTitle'), titleInput),
             formField(t('extensions.kids-chores.settings.chorePoints'), pointsInput),
+            requireAbove.field,
             webhookField,
             resetWebhookField,
             (() => {
@@ -663,6 +671,7 @@ export async function render(container, { section, signal }) {
       hintKey: 'extensions.kids-chores.settings.choreResetWebhookHint',
     });
     const resetWebhookInput = resetWebhookField.querySelector('input');
+    const requireAbove = requireAboveDoneField(false);
 
     const days = daysPicker([1, 2, 3, 4, 5]);
     const daysField = document.createElement('div');
@@ -685,6 +694,7 @@ export async function render(container, { section, signal }) {
             title: name.value,
             points: Number(points.value),
             days: readDays(days),
+            requireAboveDone: requireAbove.input.checked,
             webhookUrl: webhookInput.value.trim(),
             resetWebhookUrl: resetWebhookInput.value.trim(),
           },
@@ -696,6 +706,7 @@ export async function render(container, { section, signal }) {
         name.value = '';
         webhookInput.value = '';
         resetWebhookInput.value = '';
+        requireAbove.input.checked = false;
         paintChores(next.chores || []);
         showToast(t('extensions.kids-chores.settings.added'), 'success');
       } catch (err) {
@@ -709,6 +720,7 @@ export async function render(container, { section, signal }) {
       addTitle,
       formField(t('extensions.kids-chores.settings.choreTitle'), name),
       formField(t('extensions.kids-chores.settings.chorePoints'), points),
+      requireAbove.field,
       webhookField,
       resetWebhookField,
       daysField,

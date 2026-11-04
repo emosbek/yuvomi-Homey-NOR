@@ -693,29 +693,25 @@ test('API keeps webhook URL visible on admin settings round-trip', async () => {
   }
 });
 
-test('applySequentialLock hides later chores until earlier ones are done', () => {
-  const items = [
-    { id: 'a', done: false },
-    { id: 'b', done: false },
-    { id: 'c', done: false },
-  ];
+test('applySequentialLock only locks chores that requireAboveDone', () => {
   assert.deepEqual(
-    applySequentialLock(items, false).map((i) => i.locked),
-    [false, false, false],
-  );
-  assert.deepEqual(
-    applySequentialLock(items, true).map((i) => ({ id: i.id, locked: i.locked })),
+    applySequentialLock([
+      { id: 'a', done: false },
+      { id: 'b', done: false, requireAboveDone: true },
+      { id: 'c', done: false },
+    ]).map((i) => ({ id: i.id, locked: i.locked })),
     [
       { id: 'a', locked: false },
       { id: 'b', locked: true },
-      { id: 'c', locked: true },
+      { id: 'c', locked: false },
     ],
   );
   assert.deepEqual(
-    applySequentialLock(
-      [{ id: 'a', done: true }, { id: 'b', done: false }, { id: 'c', done: false }],
-      true,
-    ).map((i) => ({ id: i.id, locked: i.locked })),
+    applySequentialLock([
+      { id: 'a', done: true },
+      { id: 'b', done: false, requireAboveDone: true },
+      { id: 'c', done: false, requireAboveDone: true },
+    ]).map((i) => ({ id: i.id, locked: i.locked })),
     [
       { id: 'a', locked: false },
       { id: 'b', locked: false },
@@ -724,7 +720,7 @@ test('applySequentialLock hides later chores until earlier ones are done', () =>
   );
 });
 
-test('API sequentialUnlock shows only the next open chore', async () => {
+test('API requireAboveDone hides only that chore until above are done', async () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'kc-'));
   const me = startMe((_req, res) => admin(res));
   try {
@@ -745,7 +741,8 @@ test('API sequentialUnlock shows only the next open chore', async () => {
     });
     csrf = a.body.csrfToken || csrf;
     const b = await call(base, '/api/extensions/kids-chores/chores', {
-      method: 'POST', cookie: jar, csrf, json: { title: 'Second', points: 1, days },
+      method: 'POST', cookie: jar, csrf,
+      json: { title: 'Second', points: 1, days, requireAboveDone: true },
     });
     csrf = b.body.csrfToken || csrf;
     const c = await call(base, '/api/extensions/kids-chores/chores', {
@@ -755,18 +752,11 @@ test('API sequentialUnlock shows only the next open chore', async () => {
     const idA = a.body.chores.find((x) => x.title === 'First').id;
     const idB = b.body.chores.find((x) => x.title === 'Second').id;
     const idC = c.body.chores.find((x) => x.title === 'Third').id;
-
-    const enabled = await call(base, '/api/extensions/kids-chores/settings', {
-      method: 'PUT', cookie: jar, csrf, json: { sequentialUnlock: true, pointGoal: 10 },
-    });
-    assert.equal(enabled.status, 200, JSON.stringify(enabled.body));
-    assert.equal(enabled.body.settings.sequentialUnlock, true);
-    csrf = enabled.body.csrfToken || csrf;
+    assert.equal(b.body.chores.find((x) => x.id === idB).requireAboveDone, true);
 
     const today = await call(base, '/api/extensions/kids-chores/today', { cookie: jar });
-    assert.equal(today.body.open.length, 1);
-    assert.equal(today.body.open[0].id, idA);
-    assert.equal(today.body.items.length, 1);
+    assert.deepEqual(today.body.open.map((x) => x.id), [idA, idC]);
+    assert.ok(!today.body.open.some((x) => x.id === idB));
     assert.ok(!today.body.ranked, 'locked chores must not leak in the payload');
 
     const blocked = await call(base, '/api/extensions/kids-chores/complete', {
@@ -779,17 +769,14 @@ test('API sequentialUnlock shows only the next open chore', async () => {
       method: 'POST', cookie: jar, csrf, json: { id: idA },
     });
     assert.equal(doneA.status, 200, JSON.stringify(doneA.body));
-    assert.equal(doneA.body.open.length, 1);
-    assert.equal(doneA.body.open[0].id, idB);
-    assert.equal(doneA.body.items.length, 2);
+    assert.deepEqual(doneA.body.open.map((x) => x.id).sort(), [idB, idC].sort());
     csrf = doneA.body.csrfToken || csrf;
 
     const doneB = await call(base, '/api/extensions/kids-chores/complete', {
       method: 'POST', cookie: jar, csrf, json: { id: idB },
     });
     assert.equal(doneB.status, 200, JSON.stringify(doneB.body));
-    assert.equal(doneB.body.open[0].id, idC);
-    assert.equal(doneB.body.items.length, 3);
+    assert.deepEqual(doneB.body.open.map((x) => x.id), [idC]);
 
     await close(server);
   } finally {
