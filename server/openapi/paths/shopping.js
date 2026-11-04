@@ -3,7 +3,7 @@ import { op, jsonBody, idParam } from '../helpers.js';
 export function shoppingPaths() {
   return {
     '/api/v1/shopping': {
-      get: op({ summary: 'List shopping lists', tag: 'Shopping' }),
+      get: op({ summary: 'List shopping lists', tag: 'Shopping', description: 'Each list carries `item_total`, `item_checked` and `accepts_new_items` (1 or 0). `accepts_new_items` is 0 when the list mirrors a CalDAV reminder list that is read-only for its account: such a list is not offered as the target of a move, and moving an item there is refused.' }),
       post: op({ summary: 'Create shopping list', tag: 'Shopping', stateChanging: true, requestBody: jsonBody(null) }),
     },
     '/api/v1/shopping/categories': {
@@ -69,7 +69,7 @@ export function shoppingPaths() {
           + 'a field that is not sent stays as it is. `list_id` moves the item to another list: it keeps its name, quantity, '
           + 'category, note, link, price and shop, and goes to the end of its category on the list it lands on. `list_id` and '
           + '`store_id` are positive integers, as a number or a string of digits; anything else and an unknown '
-          + '`list_id` are refused with 400 and nothing changes. If the item is mirrored from a CalDAV list and the target '
+          + '`list_id` are refused with 400 and nothing changes, as is a move to a list with `accepts_new_items: 0`. If the item is mirrored from a CalDAV list and the target '
           + 'list is mirrored too, its object on the server moves along after the response, unchanged and under the same UID; '
           + 'if the target list is not mirrored, the object is removed on the server and its mirrored tags are dropped. '
           + '`list_change` in the response names the list the item came from. A case a household member can run into carries a '
@@ -116,6 +116,7 @@ export function shoppingPaths() {
       post: op({
         summary: 'Add pantry items to a shopping list',
         description: 'Adds low or empty pantry items to the list. ' + 'An open (unchecked) item of the same name on the list - compared trimmed, with whitespace collapsed and case-insensitive - means the ingredient is skipped and counted in `skipped` instead of being added twice; rows of one name in one transfer become one item. This is the one rule of every kitchen path to the shopping list (recipe, meal, meal-plan import, pantry). '
+          + 'An entry is `{ pantry_item_id, quantity? }` for a batch, or `{ pantry_product_id }` for a household product without batches, which goes over with its name and category and no quantity. '
           + 'Reads the pantry, so it requires read access to the `pantry` module in addition to `shopping` - a credential without it is refused with 403.',
         tag: 'Shopping',
         params: [idParam('listId', 'List ID')],

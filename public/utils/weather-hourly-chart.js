@@ -13,14 +13,14 @@ import {
   niceDomain,
 } from '/utils/chart.js';
 
-/** Øvre panel (temp + nedbør). */
+/** Øvre panel (temp + nedbør). Tight side pads: short °C / mm ticks only. */
 export const WEATHER_HOURLY_TEMP = Object.freeze({
-  W: 720, H: 160, PAD_L: 36, PAD_R: 36, PAD_T: 28, PAD_B: 22,
+  W: 720, H: 160, PAD_L: 22, PAD_R: 22, PAD_T: 28, PAD_B: 22,
 });
 
 /** Nedre panel (vind + retning). */
 export const WEATHER_HOURLY_WIND = Object.freeze({
-  W: 720, H: 120, PAD_L: 36, PAD_R: 36, PAD_T: 10, PAD_B: 28,
+  W: 720, H: 120, PAD_L: 22, PAD_R: 22, PAD_T: 10, PAD_B: 28,
 });
 
 /**
@@ -130,22 +130,29 @@ export function weatherHourlyChartMarkup(points, {
   const precipCeil = Math.max(0.5, ...precips, ...precipMaxes);
   const precipTop = tempS.top + (tempS.bottom - tempS.top) * 0.55;
   const precipBottom = tempS.bottom;
-  const barW = Math.max(2, ((tempS.right - tempS.left) / Math.max(n, 1)) * 0.5);
+  // Slot width uses n (not n-1): bars sit in hour slots. Clamp so first/last
+  // bars stay inside the plot — centering on chartX would spill half a bar
+  // into the Y-axis gutters.
+  const barW = Math.max(2, ((tempS.right - tempS.left) / Math.max(n, 1)) * 0.55);
+  const barX = (i) => {
+    const mid = chartX(i, n, tempGeo);
+    return Math.min(tempS.right - barW, Math.max(tempS.left, mid - barW / 2));
+  };
 
   const precipBars = points.map((p, i) => {
     const amt = Math.max(0, Number(p.precip) || 0);
     const maxAmt = Math.max(amt, Number(p.precipMax) || 0);
     if (!(maxAmt > 0) && !(amt > 0)) return '';
-    const x = chartX(i, n, tempGeo);
+    const x = barX(i);
     const parts = [];
     if (maxAmt > amt) {
       const hMax = (maxAmt / precipCeil) * (precipBottom - precipTop);
-      parts.push(`<rect class="weather-hourly-chart__precip-max" x="${(x - barW / 2).toFixed(1)}" y="${(precipBottom - hMax).toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(1, hMax).toFixed(1)}" rx="1" />`);
+      parts.push(`<rect class="weather-hourly-chart__precip-max" x="${x.toFixed(1)}" y="${(precipBottom - hMax).toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(1, hMax).toFixed(1)}" rx="1" />`);
     }
     if (amt > 0) {
       const h = (amt / precipCeil) * (precipBottom - precipTop);
       const cls = p.snow ? 'weather-hourly-chart__snow' : 'weather-hourly-chart__rain';
-      parts.push(`<rect class="${cls}" x="${(x - barW / 2).toFixed(1)}" y="${(precipBottom - h).toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(1, h).toFixed(1)}" rx="1" />`);
+      parts.push(`<rect class="${cls}" x="${x.toFixed(1)}" y="${(precipBottom - h).toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(1, h).toFixed(1)}" rx="1" />`);
     }
     return parts.join('');
   }).join('');
@@ -246,7 +253,7 @@ export function weatherHourlyChartMarkup(points, {
 
   return `
     <div class="weather-hourly-chart-stack">
-      <svg class="chart weather-hourly-chart weather-hourly-chart--temp" viewBox="0 0 ${tempGeo.W} ${tempGeo.H}" role="img" aria-hidden="true" focusable="false">
+      <svg class="weather-hourly-chart weather-hourly-chart--temp" viewBox="0 0 ${tempGeo.W} ${tempGeo.H}" role="img" aria-hidden="true" focusable="false">
         ${dayHeads}
         ${chartGridMarkup(tempDom.min, tempDom.max, (v) => formatTemp(v), tempGeo, tempDom.steps, { unit: '' })}
         ${dayMarks.filter((_, i) => i % 2 === 0).join('')}
@@ -256,7 +263,7 @@ export function weatherHourlyChartMarkup(points, {
         ${hourLabels}
         ${precipAxis}
       </svg>
-      <svg class="chart weather-hourly-chart weather-hourly-chart--wind" viewBox="0 0 ${windGeo.W} ${windGeo.H}" role="img" aria-hidden="true" focusable="false">
+      <svg class="weather-hourly-chart weather-hourly-chart--wind" viewBox="0 0 ${windGeo.W} ${windGeo.H}" role="img" aria-hidden="true" focusable="false">
         ${chartGridMarkup(windDom.min, windDom.max, (v) => formatWind(v), windGeo, windDom.steps, { unit: '' })}
         ${dayMarks.filter((_, i) => i % 2 === 1).join('')}
         ${hasGust ? `<polyline class="weather-hourly-chart__gust" fill="none" points="${gustPts.join(' ')}" vector-effect="non-scaling-stroke" />` : ''}

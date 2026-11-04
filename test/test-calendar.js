@@ -4966,7 +4966,8 @@ test('Baender: im Nachbarmonat toent das Band zurueck wie der Chip der Zelle, ni
 // keine, und ein `;` im String trennt keine Deklaration. Ohne das schluckte
 // eine einzige solche Klammer jede Deklaration dahinter, und der Guard sah
 // den Rest der Regel nicht mehr. Ein Zeilenende beendet einen offenen String
-// (so liest ihn auch der Browser), und eine ueberzaehlige `)` zaehlt nicht
+// (so liest ihn auch der Browser) - in CSS sind das \n, \r\n, \r und \f
+// (#1709) -, und eine ueberzaehlige `)` zaehlt nicht
 // ins Minus - sonst waere wieder alles dahinter "geschachtelt". In einem
 // `url(` ohne Anfuehrungszeichen ist bis zur `)` alles Adresse, auch ein
 // Anfuehrungszeichen: es oeffnet dort keinen String.
@@ -4992,7 +4993,7 @@ function splitTopLevel(text, isSeparator) {
       continue;
     }
     if (quote) {
-      if (ch === quote || ch === '\n') quote = '';
+      if (ch === quote || ch === '\n' || ch === '\r' || ch === '\f') quote = '';
       cur += ch;
       continue;
     }
@@ -5020,6 +5021,41 @@ function splitTopLevel(text, isSeparator) {
 }
 /** Werte einer Deklaration, an Leerraum ausserhalb von Klammern getrennt. */
 const cssWords = (value) => splitTopLevel(value, (ch) => /\s/.test(ch));
+/**
+ * Der Wert, wie er mit den Fallbacks aller var() darin aussieht:
+ * `var(--x, 0 1px 0 2px)` ist fuer cssWords() EIN Wort, greift der Fallback,
+ * sind es vier (#1709). Geschachtelte Fallbacks werden mit aufgeloest.
+ */
+function withVarFallbacks(value) {
+  // Jeder var()-Aufruf bis zu SEINER schliessenden Klammer - ein Wort kann
+  // mehrere tragen (`var(--a, 1px)/var(--b, 2px)`), Strings zaehlen nicht mit.
+  let out = '';
+  let i = 0;
+  while (i < value.length) {
+    const call = /^var\(/i.test(value.slice(i, i + 4)) && !/[\w-]/.test(value[i - 1] ?? '');
+    if (!call) {
+      out += value[i];
+      i += 1;
+      continue;
+    }
+    let depth = 0;
+    let quote = '';
+    let comma = -1;
+    let end = i + 3;
+    for (; end < value.length; end += 1) {
+      const ch = value[end];
+      if (ch === '\\') { end += 1; continue; }
+      if (quote) { if (ch === quote) quote = ''; continue; }
+      if (ch === '"' || ch === "'") quote = ch;
+      else if (ch === '(') depth += 1;
+      else if (ch === ')') { depth -= 1; if (depth === 0) break; }
+      else if (ch === ',' && depth === 1 && comma < 0) comma = end;
+    }
+    out += comma < 0 ? value.slice(i, end + 1) : withVarFallbacks(value.slice(comma + 1, end)).trim();
+    i = end + 1;
+  }
+  return out;
+}
 /** `[{ prop, value, text }]` eines Regelrumpfs aus eachRule(), ohne `!important`. */
 function cssDeclarations(body) {
   return splitTopLevel(body, (ch) => ch === ';').flatMap((decl) => {
@@ -5038,7 +5074,7 @@ const BOX_SHORTHANDS = new Set([
 // Eigenschaften, deren WERT eine Seite nennen kann. justify-* steht bewusst
 // nicht hier: dort gibt es start/end, und left/right bedeutet etwas anderes.
 const SIDE_KEYWORD_PROPS = new Set([
-  'text-align', 'float', 'clear', 'transform-origin', 'background-position', 'object-position',
+  'text-align', 'float', 'clear', 'transform-origin', 'background-position', 'background-position-x', 'object-position',
 ]);
 /**
  * Die Deklarationen eines Regelrumpfs, die an einer physischen Seite haengen
@@ -5051,24 +5087,37 @@ function physicalSideDeclarations(body) {
     // Langformen: left, right, margin-left, border-right-color,
     // scroll-padding-left, border-top-left-radius ...
     if (/(?:^|-)(?:left|right)(?:-|$)/.test(prop)) return true;
+    // Kurzformen zaehlen so, wie sie dastehen, UND so, wie sie mit ihren
+    // var()-Fallbacks aussehen - jede der beiden Lesarten kann greifen.
+    const readings = [value, withVarFallbacks(value)];
     if (BOX_SHORTHANDS.has(prop)) {
-      const v = cssWords(value);
-      return v.length === 4 && v[1] !== v[3];
+      return readings.some((reading) => {
+        const v = cssWords(reading);
+        return v.length === 4 && v[1] !== v[3];
+      });
     }
     if (prop === 'border-radius') {
       // Ecken: oben-links, oben-rechts, unten-rechts, unten-links - je vor und
       // hinter dem `/` (waagrechte und senkrechte Halbachse). Gespiegelt
       // tauschen oben-links/oben-rechts und unten-links/unten-rechts.
-      return splitTopLevel(value, (ch) => ch === '/').some((half) => {
+      return readings.some((reading) => splitTopLevel(reading, (ch) => ch === '/').some((half) => {
         const [tl, tr = tl, br = tl, bl = tr] = cssWords(half);
         return tl !== tr || br !== bl;
-      });
+      }));
     }
     if (SIDE_KEYWORD_PROPS.has(prop)) {
       return splitTopLevel(value, (ch) => /[\s,]/.test(ch)).some((word) => /^(?:left|right)$/i.test(word));
     }
     return false;
   }).map(({ text }) => text);
+}
+
+// Die Kurzformen, die der Band-Test abfragt. Er liest sie ueber denselben
+// Leser wie der Guard ueber die ganze Datei - bis #1709 lief er ueber ein
+// eigenes `[^;]+`, das weder Strings noch Grossschreibung kannte.
+const BAND_SHORTHANDS = new Set(['margin', 'padding', 'inset', 'border-radius']);
+function lopsidedBoxDeclarations(body) {
+  return physicalSideDeclarations(body).filter((text) => BAND_SHORTHANDS.has(text.slice(0, text.indexOf(':'))));
 }
 
 test('RTL-Leser: eine Klammer in einem CSS-String oder hinter einem Backslash verdeckt keine Deklaration', () => {
@@ -5115,6 +5164,106 @@ test('RTL-Leser: eine Klammer in einem CSS-String oder hinter einem Backslash ve
     `Worte: ${JSON.stringify(cssWords('0 "a b" 0 \'c ) d\''))}`);
 });
 
+test('RTL-Leser: var()-Fallback, background-position-x und ein Zeilenende im String (#1709)', () => {
+  const seen = (body) => physicalSideDeclarations(body).join('; ');
+  const blind = [
+    // Ein Fallback ist ein Wert: greift er, setzt er links und rechts
+    // verschieden - auch wenn var() fuer cssWords() EIN Wort ist.
+    ['margin: var(--x, 0 1px 0 2px)', 'margin: var(--x, 0 1px 0 2px)'],
+    ['padding: 0 var(--x, 1px 0 2px)', 'padding: 0 var(--x, 1px 0 2px)'],
+    ['margin: var(--a, var(--b, 0 1px 0 2px))', 'margin: var(--a, var(--b, 0 1px 0 2px))'],
+    ['scroll-margin: var(--x,0 1px 0 2px)', 'scroll-margin: var(--x,0 1px 0 2px)'],
+    ['border-radius: var(--r, 1px 0)', 'border-radius: var(--r, 1px 0)'],
+    ['border-radius: var(--r, 1px 0)/var(--s, 2px)', 'border-radius: var(--r, 1px 0)/var(--s, 2px)'],
+    // Die Achsen-Langform nennt die Seite genauso wie die Kurzform.
+    ['background-position-x: left', 'background-position-x: left'],
+    ['background-position-x: right 4px', 'background-position-x: right 4px'],
+    // Ein Zeilenende beendet einen offenen String - in CSS sind das \n,
+    // \r\n, \r und \f, nicht nur \n.
+    ['content: "(\r; margin-left: 1px', 'margin-left: 1px'],
+    ['content: "(\f; margin-left: 1px', 'margin-left: 1px'],
+    ["content: '(\r; float: right", 'float: right'],
+  ];
+  const missed = blind.filter(([body, want]) => seen(body) !== want)
+    .map(([body, want]) => `${JSON.stringify(body)}: gesehen "${seen(body)}", erwartet "${want}"`);
+  const quiet = [
+    'margin: var(--x, 0 1px 0 1px)',
+    'margin: var(--x, 0 1px)',
+    'margin: var(--x)',
+    'padding: var(--x, 0) 1px',
+    'border-radius: var(--r, 4px)',
+    'border-radius: var(--r, 1px 1px 2px 2px)',
+    'border-radius: var(--r, 1px 1px)/var(--r, 1px 1px)',
+    'margin: var(--a, 1px) var(--b, 2px) var(--c, 3px) var(--b, 2px)',
+    'background-position-x: center',
+    'background-position-y: top',
+    'content: "a\\\rb; margin-left: 1px"; color: red',
+  ];
+  const loud = quiet.filter((body) => seen(body) !== '').map((body) => `${JSON.stringify(body)}: faelschlich gemeldet "${seen(body)}"`);
+  assert(missed.length + loud.length === 0, [...missed, ...loud].join('\n    '));
+});
+
+test('Band-Leser: lopsidedBoxDeclarations() liest wie der Deklarationsleser (#1709)', () => {
+  // Der Band-Test fragt nur Kurzformen ab, liest sie aber mit demselben Leser
+  // wie der Guard ueber die ganze Datei: Strings, Gross-/Kleinschreibung und
+  // var()-Fallbacks gelten hier wie dort.
+  const odd = (body) => lopsidedBoxDeclarations(body).join('; ');
+  const blind = [
+    ['Margin: 0 1px 0 2px', 'margin: 0 1px 0 2px'],
+    ['color: red;padding: 0 1px 0 2px !important', 'padding: 0 1px 0 2px'],
+    ['content: "("; inset: 0 1px 0 2px', 'inset: 0 1px 0 2px'],
+    ['padding: var(--p, 0 1px 0 2px)', 'padding: var(--p, 0 1px 0 2px)'],
+    ['border-radius: 1px 0 / 0', 'border-radius: 1px 0 / 0'],
+  ];
+  const missed = blind.filter(([body, want]) => odd(body) !== want)
+    .map(([body, want]) => `${JSON.stringify(body)}: gesehen "${odd(body)}", erwartet "${want}"`);
+  const quiet = [
+    'content: "; margin: 0 1px 0 2px"; color: red',
+    "content: '; padding: 0 1px 0 2px'",
+    'margin: 0 1px 0 1px',
+    'margin-left: 1px',
+    'border-radius: 1px / 2px',
+    '--margin: 0 1px 0 2px',
+  ];
+  const loud = quiet.filter((body) => odd(body) !== '').map((body) => `${JSON.stringify(body)}: faelschlich gemeldet "${odd(body)}"`);
+  assert(missed.length + loud.length === 0, [...missed, ...loud].join('\n    '));
+});
+
+test('eachRule(): ein String schneidet keine Regel ab, und ein Kommentarzeichen im String ist keins (#1709)', () => {
+  // Der geteilte Scanner, nicht der Deklarationsleser: was eachRule() hier
+  // abschneidet, bekommt physicalSideDeclarations() nie zu sehen.
+  const sides = (css) => [...eachRule(css)]
+    .map((r) => `${r.at.length ? `${r.at.join(' ')} > ` : ''}${r.selector} => ${physicalSideDeclarations(r.body).join('; ')}`);
+  const cases = [
+    ['.a { content: "}"; margin-left: 1px }', ['.a => margin-left: 1px']],
+    [".a { content: '}'; margin-left: 1px }", ['.a => margin-left: 1px']],
+    ['.a { content: "\\"}"; margin-left: 1px }', ['.a => margin-left: 1px']],
+    ['.a { content: "{"; margin-left: 1px } .b { float: right }', ['.a => margin-left: 1px', '.b => float: right']],
+    ['.a { content: "/*"; margin-left: 1px; content: "*/" }', ['.a => margin-left: 1px']],
+    ['.a { content: "*/"; margin-left: 1px } /* } */ .b { float: right }', ['.a => margin-left: 1px', '.b => float: right']],
+    ['.a { background: url(a}b.png); margin-left: 1px }', ['.a => margin-left: 1px']],
+    // Wie viel Leerraum auch vor dem Anfuehrungszeichen steht: das url() ist quotiert.
+    [`.a { background: url(${' '.repeat(80)}"a)b.png"); margin-left: 1px } .b { float: right }`,
+      ['.a => margin-left: 1px', '.b => float: right']],
+    ['.a[title="}"] { margin-left: 1px }', ['.a[title="}"] => margin-left: 1px']],
+    ['.a[title=";"] { margin-left: 1px }', ['.a[title=";"] => margin-left: 1px']],
+    // Ein maskiertes Anfuehrungszeichen ausserhalb eines Strings oeffnet keinen.
+    ['.foo\\"bar { margin-left: 1px } .b { float: right }', ['.foo\\"bar => margin-left: 1px', '.b => float: right']],
+    ['@media (min-width: 1px) { .a { content: "}"; margin-left: 1px } .b { float: right } }',
+      ['@media (min-width: 1px) > .a => margin-left: 1px', '@media (min-width: 1px) > .b => float: right']],
+    // Ein Zeilenende beendet einen offenen String, die Klammer danach zaehlt.
+    ['.a { content: "x\n} .b { margin-left: 1px }', ['.a => ', '.b => margin-left: 1px']],
+    ['.a { content: "x\r} .b { margin-left: 1px }', ['.a => ', '.b => margin-left: 1px']],
+    // Was schon vorher galt, gilt weiter.
+    ['.a { /* } */ margin-left: 1px }', ['.a => margin-left: 1px']],
+    ['.a{} .b{} .c{} .d{}', ['.a => ', '.b => ', '.c => ', '.d => ']],
+    ['@keyframes k { from { left: 0 } } .a { float: left }', ['.a => float: left']],
+  ];
+  const wrong = cases.filter(([css, want]) => JSON.stringify(sides(css)) !== JSON.stringify(want))
+    .map(([css, want]) => `${JSON.stringify(css)}: ${JSON.stringify(sides(css))}, erwartet ${JSON.stringify(want)}`);
+  assert(wrong.length === 0, wrong.join('\n    '));
+});
+
 test('Baender in RTL: offene Kante, Chevron und Nachbarmonat-Toenung kippen mit der Schreibrichtung (#1467)', () => {
   // Das Raster kippt in RTL selbst: Spalte 1 steht rechts, `first` und
   // --band-out-start zaehlen vom Zeilenanfang. Was an einer SEITE des Bands
@@ -5137,20 +5286,6 @@ test('Baender in RTL: offene Kante, Chevron und Nachbarmonat-Toenung kippen mit 
   // physisch: `margin: 0 var(--band-me) 0 var(--band-ms)` setzt den Einzug in
   // RTL auf die falsche Seite. Drei Werte (`a b c`) sind seitengleich, weil
   // der mittlere Wert fuer links UND rechts gilt.
-  const lopsided = (body) => [...body.matchAll(/(?:^|[;{\s])(margin|padding|inset|border-radius)\s*:\s*([^;]+)/g)]
-    .filter(([, prop, raw]) => {
-      const value = raw.replace(/!important/, '').trim();
-      if (prop !== 'border-radius') {
-        const v = cssWords(value);
-        return v.length === 4 && v[1] !== v[3];
-      }
-      // Radius: gespiegelt tauschen oben-links/oben-rechts und unten-links/unten-rechts.
-      return value.split('/').some((half) => {
-        const [tl, tr = tl, br = tl, bl = tr] = cssWords(half);
-        return tl !== tr || br !== bl;
-      });
-    })
-    .map(([, prop, raw]) => `${prop}: ${raw.trim()}`);
 
   // (1) Offene Kante, Einzug und Rundung: nur logische Eigenschaften, in
   // jeder Regel dieser Klassen.
@@ -5158,7 +5293,7 @@ test('Baender in RTL: offene Kante, Chevron und Nachbarmonat-Toenung kippen mit 
     for (const r of withClass(cls)) {
       if (/\[dir=/.test(r.selector)) continue;
       assert(!physical.test(r.body), `${where(r)} haengt an einer physischen Seite: ${r.body}`);
-      const odd = lopsided(r.body);
+      const odd = lopsidedBoxDeclarations(r.body);
       assert(odd.length === 0, `${where(r)} setzt links und rechts verschieden: ${odd.join('; ')}`);
     }
   }
@@ -6302,9 +6437,10 @@ test('Seitenleiste: erst ab 86.25rem Kalenderflaeche, nur mit Leiste rueckt die 
     'die Leiste haelt den Platz ihrer Bildlaufleiste - sonst rueckt der Mini-Monat, wenn „Als Naechstes" nachkommt (R19-Nachlese)');
   assert(rules.some((r) => /\.calendar-page\.app-page--list-detail/.test(r.selector) && /container-name:\s*module-surface cal-page/.test(r.body)),
     'in Agenda und Tag behaelt die Seite ihren Namen module-surface');
-  const label = rules.find((r) => r.selector.trim() === '.cal-toolbar__label' && r.at.some((a) => /min-width:\s*1024px/.test(a)));
-  assert(/font-weight:\s*var\(--font-weight-bold\)/.test(label?.body ?? '') && /font-size:\s*var\(--text-lg\)/.test(label?.body ?? ''),
-    'der Desktop-Zeitraum steht fett in 18px, nicht mehr leiser als Fliesstext-Gewicht');
+  // Seit #1797 ist der Desktop-Zeitraum der Titel selbst (Titelrolle 22px fett,
+  // typography.css) - geprueft im Test "#1797" unten, hier nur die Kennung.
+  assert(/className: 'cal-toolbar__label page-toolbar__period-title'/.test(readFileSync(new URL('../public/pages/calendar.js', import.meta.url), 'utf8')),
+    'der Desktop-Zeitraum traegt die Titelrolle, nicht mehr leiser als der Modulname');
   const src = readFileSync(new URL('../public/pages/calendar.js', import.meta.url), 'utf8');
   // R20: nur die Suche steht ohne Leiste. Die Agenda behaelt sie - ohne „Als
   // Naechstes" (das IST die Agenda); vorher sprang der Inhalt beim
@@ -7001,6 +7137,141 @@ test('R23: dayHeading baut seinen Formatierer einmal', () => {
     Intl.DateTimeFormat = Real;
   }
   assert(built <= 2, `38 Tage, ${built} Formatierer`);
+});
+
+// --------------------------------------------------------
+// #1797 + #1462: der Zeitraum ist der Titel, die Ueberlappung ein Status-Zeichen
+// --------------------------------------------------------
+
+/* DIE SHELL-VARIANTE „ZEITRAUM ALS TITEL" (#1797, Ulas 2026-10-26). Ab 1024px
+ * ist der Zeitraum der sichtbare Titel des Kopfs, das <h1> nennt das Modul nur
+ * noch der Hilfstechnik - versteckt per Clip, nicht per display/visibility,
+ * sonst fiele die Seitenueberschrift aus dem Baum. Die Pfeile stehen direkt am
+ * Titel (vor ihm, damit sie bei wechselnder Textbreite stillstehen), "Heute"
+ * dahinter. */
+const layoutCssV = readFileSync(new URL('../public/styles/layout.css', import.meta.url), 'utf8');
+const typographyCssV = readFileSync(new URL('../public/styles/typography.css', import.meta.url), 'utf8');
+const desktopRules = (css) => [...eachRule(css)].filter((r) => r.at.some((a) => /min-width:\s*1024px/.test(a)));
+const phoneTabletRules = (css) => [...eachRule(css)].filter((r) => r.at.some((a) => /max-width:\s*1023px/.test(a)));
+
+test('#1797: der Kalenderkopf traegt die Shell-Variante "Zeitraum als Titel", das <h1> nennt das Modul', () => {
+  const src = readFileSync(new URL('../public/pages/calendar.js', import.meta.url), 'utf8');
+  const renderSrc = src.slice(src.indexOf('export async function render('), src.indexOf('export async function render(') + 4000);
+  assert(/class="page-toolbar [^"]*\bpage-toolbar--period-as-title\b[^"]*" id="cal-toolbar"/.test(renderSrc), 'der Kopf ist als Variante markiert, nicht geraten');
+  const html = calendarHelpers.toolbarHtml();
+  assert(/<h1 class="page-toolbar__title">calendar\.title<\/h1>/.test(html), 'das <h1> bleibt und nennt das Modul');
+  assert(/class="period-stepper__value [^"]*\bpage-toolbar__period-title\b/.test(html), 'der Zeitraum traegt die Titelrolle der Variante');
+  const hidden = desktopRules(layoutCssV).find((r) => /\.page-toolbar--period-as-title[^,{]*>\s*\.page-toolbar__title\s*$/.test(r.selector.trim()));
+  assert(hidden, 'die Shell blendet das <h1> der Variante ab 1024px aus');
+  assert(/clip-path:\s*inset\(50%\)/.test(hidden.body) && /width:\s*1px/.test(hidden.body), `per Clip versteckt (${hidden.body})`);
+  // IM FLUSS, NICHT ABSOLUT (Sonde 19, uk 1280): ein absolut gesetztes <h1>
+  // stand in einem zweizeiligen Kopf mittig zwischen den Zeilen und zaehlte als
+  // eigene Zeile der Titelzeile. Als 1px-Flex-Element steht es IN Zeile 1.
+  assert(!/position:\s*absolute/.test(hidden.body), 'das versteckte <h1> bleibt ein Element der Titelzeile');
+  assert(/margin-inline-end:\s*calc\(-1 \* var\(--page-toolbar-gap\)/.test(hidden.body), 'und kostet die Zeile keine Luecke');
+  assert(!/display:\s*none|visibility:\s*hidden/.test(hidden.body), 'nie aus dem Baum: der Screenreader sagt weiter "Kalender"');
+  const order = (part) => {
+    const rule = desktopRules(layoutCssV).find((r) => r.selector.includes('.page-toolbar--period-as-title') && r.selector.includes(part) && /order:/.test(r.body));
+    return Number(/order:\s*(\d+)/.exec(rule?.body ?? '')?.[1] ?? NaN);
+  };
+  assert(order('.period-stepper__value') > 0, 'der Titel steht hinter beiden Pfeilen, direkt am naechsten');
+  assert(order('.period-stepper__reset') > order('.period-stepper__value'), '"Heute" steht hinter dem Titel');
+  const label = desktopRules(calendarCss).filter((r) => r.selector.trim() === '.cal-toolbar__label');
+  assert(label.length && label.every((r) => !/11\.75rem|15rem/.test(r.body)), 'keine feste Labelbreite mehr, die die Pfeile vom Zeitraum trennt');
+  const role = desktopRules(typographyCssV).find((r) => r.selector.includes('.page-toolbar--period-as-title') && r.selector.includes('.page-toolbar__period-title'));
+  assert(/font-size:\s*var\(--type-toolbar-title\)/.test(role?.body ?? '') && /font-weight:\s*var\(--font-weight-bold\)/.test(role?.body ?? ''),
+    'der Zeitraum ist die groesste Schrift des Kopfs: die Titelrolle (22px fett)');
+  const year = desktopRules(typographyCssV).find((r) => r.selector.includes('.page-toolbar__period-year'));
+  assert(/color:\s*var\(--color-text-secondary\)/.test(year?.body ?? ''), 'das Jahr steht in der Sekundaerfarbe');
+});
+
+test('#1797: das Jahr eines Zeitraum-Titels ist ein eigenes Wort, und nur dann', () => {
+  const { periodTitleParts } = calendarHelpers;
+  assert(JSON.stringify(periodTitleParts('Oktober 2026', '2026')) === JSON.stringify({ before: 'Oktober ', year: '2026', after: '' }), `${JSON.stringify(periodTitleParts('Oktober 2026', '2026'))}`);
+  assert(JSON.stringify(periodTitleParts('KW 42 · Oktober 2026', '2026')) === JSON.stringify({ before: 'KW 42 · Oktober ', year: '2026', after: '' }), `${JSON.stringify(periodTitleParts('KW 42 · Oktober 2026', '2026'))}`);
+  assert(JSON.stringify(periodTitleParts('2026년 10월', '2026')) === JSON.stringify({ before: '', year: '2026년', after: ' 10월' }), `${JSON.stringify(periodTitleParts('2026년 10월', '2026'))}`);
+  assert(JSON.stringify(periodTitleParts('2026年10月', '2026')) === JSON.stringify({ before: '', year: '2026年', after: '10月' }), `${JSON.stringify(periodTitleParts('2026年10月', '2026'))}`);
+  assert(periodTitleParts('Mittwoch, 21.10.2026', '2026') === null, 'in einem Datum bleibt das Jahr Teil des Datums');
+  assert(periodTitleParts('07.10. - 06.11.2026', '2026') === null);
+});
+
+/* DIE UEBERLAPPUNG IST EIN STATUS-ZEICHEN IN DER TITELZEILE (#1462). Sie stand
+ * im Aktions-Slot und baute mobil eine eigene Kopfzeile. Jetzt traegt sie der
+ * Status-Slot der Shell direkt hinter dem Zeitraum: unter 1024px ein
+ * Icon-Knopf, dessen Name der volle Satz ist, ab 1024px mit kurzem Text. */
+test('#1462: die Ueberlappungswarnung steht im Status-Slot der Titelzeile, nicht im Aktions-Slot', () => {
+  const { scheduleStatusHtml, toolbarHtml } = calendarHelpers;
+  assert(scheduleStatusHtml([]) === '', 'ohne Ueberlappung kein Slot, also keine Breite');
+  const status = scheduleStatusHtml([{ date_key: '2026-10-21', user_id: 1 }]);
+  const html = toolbarHtml({ statusHtml: status });
+  const at = (needle) => html.indexOf(needle);
+  const slot = at('class="page-toolbar__status"');
+  assert(slot > at('class="page-toolbar__center') && slot < at('class="page-toolbar__actions"'), 'der Slot folgt dem Zeitraum in der Titelzeile');
+  assert(!html.slice(at('class="page-toolbar__actions"'), at('class="page-toolbar__bar')).includes('overlap'), 'die Warnung steht nicht mehr im Aktions-Slot');
+  const btn = /<button[^>]*id="cal-overlap"[^>]*>/.exec(status)?.[0] ?? '';
+  assert(/aria-label="schedule\.overlapWarning\{/.test(btn), `der Name ist der volle Satz (${btn})`);
+  assert(/aria-haspopup="dialog"/.test(btn), 'ein Tipp oeffnet den vollen Satz als Blatt oder Popover');
+  assert(/class="page-toolbar__status-text">schedule\.overlapWarningShort</.test(status), 'am Desktop bleibt der kurze Text');
+  const base = [...eachRule(layoutCssV)].find((r) => !r.at.length && r.selector.trim() === '.page-toolbar__status');
+  assert(/flex-shrink:\s*0/.test(base?.body ?? ''), 'die Shell kennt den Slot');
+  const compact = phoneTabletRules(layoutCssV);
+  assert(/display:\s*none/.test(compact.find((r) => r.selector.trim() === '.page-toolbar__status-text')?.body ?? ''), 'unter 1024px nur das Zeichen');
+  assert(![...eachRule(layoutCssV), ...eachRule(calendarCss)].some((r) => r.selector.includes('page-toolbar__status') && /flex-basis:\s*100%|order:\s*[1-9]/.test(r.body)),
+    'der Slot oeffnet keine eigene Zeile');
+  const actions = phoneTabletRules(calendarCss).find((r) => /^\.cal-toolbar > \.page-toolbar__actions/.test(r.selector.trim()));
+  assert(actions && !/schedule-warning/.test(actions.selector) && /display:\s*none/.test(actions.body),
+    'unter 1024px steht der Aktions-Slot nie als Zeile da - auch nicht mit einer Warnung');
+  const tabletTitle = [...eachRule(calendarCss)].find((r) => r.at.some((a) => /min-width:\s*768px\)\s*and\s*\(max-width:\s*1023px/.test(a))
+    && /> \.page-toolbar__title$/.test(r.selector.trim()));
+  assert(/--page-status-lead/.test(tabletTitle?.body ?? ''), 'am Tablet rechnet die Titelbasis das Zeichen ab, die Zeile bricht nicht um');
+});
+
+/* DER STATUS GIBT SEIN WORT AB, BEVOR DIE TITELZEILE BRICHT (Sonde 19, #1462).
+ * Am Desktop steht die Ueberlappung mit kurzem Text. Passt die eine Zeile nur
+ * ohne ihn - oder bricht ohne ihn sogar die Titelzeile -, steht nur das
+ * Zeichen (Name: der volle Satz). Gemessen gegen den Text, nicht gegen die
+ * gerade gezeigte Form, damit die Entscheidung nicht pendelt. */
+test('#1462: am Desktop wird der Status zum Zeichen, wenn die Zeile sonst nicht passt', () => {
+  const box = (width, extra = {}) => ({ getBoundingClientRect: () => ({ width }), classList: { contains: () => false }, ...extra });
+  const make = (inner) => {
+    const classes = new Set();
+    // Wie im Browser: in der Zeichen-Form misst der Status 40 statt 200px.
+    const status = { getBoundingClientRect: () => ({ width: classes.has('page-toolbar--status-icon') ? 40 : 200 }), classList: { contains: () => false } };
+    const kids = [box(36), box(120), box(340), box(160), status];
+    const barEl = { classList: { contains: (c) => c === 'page-toolbar__bar' }, getBoundingClientRect: () => ({ width: 600 }) };
+    return {
+      isConnected: true,
+      clientWidth: inner + 64,
+      children: [...kids, barEl],
+      classList: { toggle: (c, on) => (on ? classes.add(c) : classes.delete(c)), remove: (...c) => c.forEach((x) => classes.delete(x)), contains: (c) => classes.has(c) },
+      querySelector: (sel) => ({ '.cal-toolbar__views': { scrollWidth: 280 }, '#cal-filters': box(40), '.page-toolbar__status-btn': status }[sel] ?? null),
+      classes,
+    };
+  };
+  const prevWindow = globalThis.window;
+  const prevGcs = globalThis.getComputedStyle;
+  try {
+    globalThis.window = { matchMedia: () => ({ matches: true }) };
+    globalThis.getComputedStyle = () => ({ paddingInlineStart: '32', paddingInlineEnd: '32', columnGap: '8', display: 'flex' });
+    // Titelzeile 856 + 5 Luecken = 896; kompakte Bar 280 + 8 + 8 + 40 + 44 = 380.
+    const text = make(1276);
+    calendarHelpers.syncToolbarFit(text);
+    assert(text.classes.has('cal-toolbar--compact') && !text.classes.has('page-toolbar--status-icon'), 'passt mit Text: der Text bleibt');
+    // Ohne Text (Zeichen 40 statt 200): 736 + 380 = 1116.
+    const icon = make(1200);
+    calendarHelpers.syncToolbarFit(icon);
+    assert(icon.classes.has('cal-toolbar--one-row') && icon.classes.has('page-toolbar--status-icon'), 'eine Zeile nur ohne Text: das Zeichen');
+    calendarHelpers.syncToolbarFit(icon);
+    assert(icon.classes.has('page-toolbar--status-icon'), 'die Entscheidung pendelt nicht');
+    const tight = make(800);
+    calendarHelpers.syncToolbarFit(tight);
+    assert(!tight.classes.has('cal-toolbar--one-row') && tight.classes.has('page-toolbar--status-icon'), 'bricht sonst die Titelzeile, steht nur das Zeichen');
+  } finally {
+    globalThis.window = prevWindow;
+    globalThis.getComputedStyle = prevGcs;
+  }
+  const iconRule = desktopRules(layoutCssV).find((r) => /\.page-toolbar--status-icon .*\.page-toolbar__status-text$/.test(r.selector.trim()));
+  assert(/display:\s*none/.test(iconRule?.body ?? ''), 'die Shell kennt die Zeichen-Form am Desktop');
 });
 
 // --------------------------------------------------------

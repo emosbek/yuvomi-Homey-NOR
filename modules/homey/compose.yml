@@ -6,7 +6,14 @@ name: yuvomi
 
 services:
   yuvomi:
-    image: ghcr.io/ulsklyc/yuvomi:latest
+    # Build from this checkout. Pulling ghcr.io/ulsklyc/yuvomi:latest only runs
+    # upstream Yuvomi — MET Norway, the hourly chart and Homey-NOR dashboard
+    # fixes live in server/ and public/ here, not in that image. modules/ alone
+    # is mounted for Homey; the rest of the app must come from this build.
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: yuvomi-homey-nor:local
     restart: unless-stopped
     ports:
       - "127.0.0.1:3001:3000"
@@ -48,9 +55,11 @@ services:
       YUVOMI_UPSTREAM: http://127.0.0.1:3001
       YUVOMI_INTERNAL_URL: http://127.0.0.1:3001
       HOMEY_DATA_DIR: /opt/yuvomi/data/homey
+      KIDS_CHORES_DATA_DIR: /opt/yuvomi/data/kids-chores
     volumes:
       - ../..:/opt/yuvomi:ro
       - ../../data/homey:/opt/yuvomi/data/homey
+      - ../../data/kids-chores:/opt/yuvomi/data/kids-chores
     working_dir: /opt/yuvomi
     command: ["node", "modules/homey/gateway.js"]
     logging:

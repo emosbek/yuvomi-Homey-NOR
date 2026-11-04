@@ -1,0 +1,497 @@
+.kc-progress {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2, 0.5rem);
+  margin: 0 0 var(--space-5, 1.25rem);
+  text-align: center;
+  /* SVG mark colors follow the theme via these tokens */
+  --kc-mark-done: var(--seal-accent, #EA580C);
+  --kc-mark-stroke: color-mix(in srgb, var(--seal-accent, #EA580C) 55%, var(--color-border-control));
+  --kc-mark-fill: color-mix(in srgb, var(--seal-accent, #EA580C) 70%, var(--color-surface));
+}
+
+.kc-progress__label {
+  margin: 0;
+  font-size: var(--type-secondary, 0.95rem);
+  color: var(--color-text-secondary);
+}
+
+.kc-progress__score {
+  margin: 0;
+  font-weight: var(--font-weight-medium, 650);
+  font-size: 1.1rem;
+  color: var(--color-text-primary);
+}
+
+.kc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-3, 0.65rem);
+}
+
+.kc-chore {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3, 0.75rem);
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: var(--color-text-primary);
+}
+
+.kc-chore:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.kc-chore--done {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+
+.kc-chore__title {
+  font-weight: var(--font-weight-medium, 600);
+  min-width: 0;
+  color: var(--color-text-primary);
+}
+
+.kc-chore__points {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm, 0.9rem);
+}
+
+.kc-congrats {
+  margin: var(--space-4, 1rem) 0 0;
+  padding: var(--space-4, 1rem) var(--space-4, 1.1rem);
+  border-radius: var(--radius-lg, 12px);
+  background: color-mix(in srgb, var(--seal-accent, #EA580C) 14%, var(--color-surface));
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-medium, 600);
+  text-align: center;
+}
+
+/* Settings sheet does not auto-load module style — settings.js calls ensureStyle. */
+.kc-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  width: 100%;
+  max-width: 40rem;
+}
+
+.kc-settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  width: 100%;
+}
+
+.kc-settings-form .form-field {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.4rem;
+  width: 100%;
+}
+
+.kc-settings-form .form-input,
+.kc-settings-form textarea.form-input,
+.kc-settings-form select.form-input {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.kc-settings-form textarea.form-input {
+  min-height: 4.5rem;
+  resize: vertical;
+}
+
+.kc-check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  margin: 0.25rem 0 0;
+  line-height: 1.35;
+  cursor: pointer;
+}
+
+.kc-check-row input {
+  margin-top: 0.2rem;
+  flex: 0 0 auto;
+}
+
+.kc-settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-top: 0.25rem;
+}
+
+.kc-settings-chores {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.kc-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.kc-days__day {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.65rem;
+  border-radius: var(--radius-full, 999px);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font-size: 0.85rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.kc-chore-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 0.75rem;
+  align-items: flex-start;
+  padding: 0.85rem 0;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.kc-chore-row__text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+  flex: 1 1 10rem;
+  padding-top: 0.15rem;
+  color: var(--color-text-primary);
+}
+
+.kc-chore-row__meta {
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+}
+
+.kc-widget {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 0.75rem);
+  /* Horizontal pad comes from `.widget__body` so the mark lines up with the seal. */
+  padding-top: 0;
+}
+
+.kc-widget__progress {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 0.5rem);
+  min-height: var(--target-sm, 28px);
+}
+
+.kc-widget__mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: var(--target-sm, 28px);
+  height: var(--target-sm, 28px);
+  line-height: 0;
+  /* Module accent for the SVG fill/stroke tokens */
+  --kc-mark-done: var(--seal-accent, #EA580C);
+  --kc-mark-stroke: color-mix(in srgb, var(--seal-accent, #EA580C) 55%, var(--color-border-control));
+  --kc-mark-fill: color-mix(in srgb, var(--seal-accent, #EA580C) 70%, var(--color-surface));
+}
+
+.kc-widget__mark .kc-progress-mark {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.kc-widget__score {
+  margin: 0;
+  font-size: var(--type-secondary, 0.9rem);
+  font-weight: var(--font-weight-medium, 600);
+  color: var(--color-text-secondary);
+}
+
+.kc-widget__list {
+  display: grid;
+  gap: var(--space-2, 0.5rem);
+  width: 100%;
+}
+
+/* Inset wells on the overview card — same recipe as DESIGN.md Kachel-in-Karte. */
+.kc-widget__chore {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3, 0.75rem);
+  width: 100%;
+  min-height: var(--target-base, 2.75rem);
+  margin: 0;
+  padding: var(--space-3, 0.75rem) var(--space-4, 1rem);
+  border: 0;
+  border-radius: var(--radius-md, 10px);
+  background: var(--color-fill-well);
+  box-shadow: none;
+  font: inherit;
+  color: var(--color-text-primary);
+  text-align: left;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition:
+    background-color var(--transition-fast, 150ms ease),
+    transform var(--transition-fast, 150ms ease);
+}
+
+@media (hover: hover) {
+  .kc-widget__chore:hover:not(:disabled):not(.kc-widget__chore--static) {
+    background: var(--color-surface-elevated-hover, var(--color-surface-hover));
+  }
+}
+
+.kc-widget__chore:active:not(:disabled):not(.kc-widget__chore--static) {
+  transform: scale(var(--press-scale-lg, 0.98));
+  background: var(--color-surface-3);
+}
+
+.kc-widget__chore:focus-visible {
+  outline: var(--focus-ring-width, 2px) solid var(--focus-ring-color, var(--color-accent));
+  outline-offset: var(--focus-ring-offset, 2px);
+}
+
+.kc-widget__chore:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.kc-widget__chore--static {
+  cursor: default;
+}
+
+.kc-widget__chore-title {
+  font-weight: var(--font-weight-medium, 600);
+  min-width: 0;
+  color: var(--color-text-primary);
+}
+
+.kc-widget__chore-points {
+  flex: 0 0 auto;
+  font-size: var(--text-sm, 0.85rem);
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.kc-widget__congrats {
+  margin: 0;
+  padding: var(--space-3, 0.85rem) var(--space-3, 0.95rem);
+  border-radius: var(--radius-lg, 10px);
+  background: color-mix(in srgb, var(--seal-accent, #EA580C) 14%, var(--color-surface));
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-medium, 600);
+  font-size: 0.95rem;
+  text-align: center;
+}
+
+.kc-chore-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+  flex: 0 0 auto;
+}
+
+.kc-chore-row__order {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  margin-right: 0.15rem;
+}
+
+.kc-chore-row__order .row-action,
+.kc-chore-row__handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.35rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-accent, #6366f1);
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.kc-chore-row__handle {
+  color: var(--color-text-tertiary, var(--color-text-secondary));
+  cursor: grab;
+  height: 1.5rem;
+}
+
+.kc-chore-row__handle:active {
+  cursor: grabbing;
+}
+
+.kc-chore-row__order .row-action:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.kc-chore-row__editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 100%;
+  margin-top: 0.65rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.kc-chore-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: 100%;
+}
+
+.kc-notices {
+  margin: 0 0 var(--space-4, 1rem);
+  padding: var(--space-3, 0.75rem) var(--space-4, 1rem);
+  border-radius: var(--radius-md, 10px);
+  background: color-mix(in srgb, var(--color-accent, #0B6E99) 12%, var(--color-surface));
+  color: var(--color-text-primary);
+  font-size: var(--type-secondary, 0.9rem);
+}
+
+.kc-wall-switch-wrap {
+  margin: 0.35rem 0 0;
+}
+
+.kc-wall-switch {
+  width: 100%;
+}
+
+.kc-wall {
+  min-width: 0;
+}
+
+.kc-wall__progress {
+  display: flex;
+  align-items: center;
+  gap: clamp(var(--space-3, 0.75rem), 1.5vmin, var(--space-5, 1.25rem));
+  margin: 0 0 var(--space-3, 0.75rem);
+}
+
+.kc-wall__mark {
+  flex: 0 0 auto;
+  line-height: 0;
+}
+
+.kc-wall__score {
+  margin: 0;
+  font-size: clamp(var(--text-base, 1rem), 2.4vmin, var(--text-2xl, 1.5rem));
+  font-weight: var(--font-weight-semibold, 650);
+  color: var(--color-text-primary);
+  line-height: var(--line-height-snug, 1.25);
+}
+
+.kc-wall__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: var(--color-surface);
+  border-radius: var(--radius-xl, 16px);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.kc-wall__chore {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: clamp(var(--space-3, 0.75rem), 1.5vmin, var(--space-5, 1.25rem));
+  padding: clamp(var(--space-2, 0.5rem), 1.2vmin, var(--space-4, 1rem))
+    clamp(var(--space-3, 0.75rem), 1.6vmin, var(--space-5, 1.25rem));
+  font-size: clamp(var(--text-base, 1rem), 2.2vmin, var(--text-xl, 1.25rem));
+  color: var(--color-text-primary);
+  line-height: var(--line-height-snug, 1.25);
+}
+
+.kc-wall__chore + .kc-wall__chore {
+  border-top: 1px solid var(--color-border-subtle, rgba(0, 0, 0, 0.08));
+}
+
+.kc-wall__chore-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.kc-wall__chore-points {
+  flex: 0 0 auto;
+  color: var(--color-text-secondary);
+  font-size: 0.9em;
+}
+
+.kc-wall__done {
+  margin: 0;
+  padding: clamp(var(--space-3, 0.75rem), 1.4vmin, var(--space-5, 1.25rem));
+  background: var(--color-surface);
+  border-radius: var(--radius-xl, 16px);
+  box-shadow: var(--shadow-sm);
+  font-size: clamp(var(--text-base, 1rem), 2.2vmin, var(--text-xl, 1.25rem));
+  color: var(--color-text-primary);
+  line-height: var(--line-height-snug, 1.25);
+}
+
+[data-wall-night] .kc-wall__chore + .kc-wall__chore {
+  border-top-color: color-mix(in srgb, var(--color-border-subtle, #fff) 40%, transparent);
+}
+
+.kc-wall__chore-wrap {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kc-wall__chore--action {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+
+.kc-wall__chore--action:hover,
+.kc-wall__chore--action:focus-visible {
+  background: color-mix(in srgb, var(--seal-accent, #EA580C) 10%, transparent);
+}
+
+.kc-wall__chore--action:focus-visible {
+  outline: 2px solid var(--seal-accent, #EA580C);
+  outline-offset: -2px;
+}
+
+.kc-wall__chore--action:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

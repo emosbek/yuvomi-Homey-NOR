@@ -5,6 +5,7 @@
 set -euo pipefail
 
 REPO="${YUVOMI_REPO:-https://github.com/emosbek/yuvomi-Homey-NOR.git}"
+# Default matches this file's branch. Override with YUVOMI_BRANCH=… if needed.
 BRANCH="${YUVOMI_BRANCH:-cursor/homey-ui-polish-5293}"
 DEST="${YUVOMI_DIR:-/opt/yuvomi}"
 HOST="${YUVOMI_HOST:-192.168.1.24}"
@@ -38,6 +39,8 @@ if ! command -v docker >/dev/null 2>&1; then
   curl -fsSL https://get.docker.com | sh
 fi
 
+echo "Installing from ${REPO} branch ${BRANCH} into ${DEST}"
+
 if [ ! -d "${DEST}/.git" ]; then
   rm -rf "$DEST"
   git clone --branch "$BRANCH" --depth 1 "$REPO" "$DEST"
@@ -46,7 +49,18 @@ else
   git -C "$DEST" checkout -B "$BRANCH" FETCH_HEAD
 fi
 
-mkdir -p "${DEST}/data/homey" "${DEST}/backups" "${DEST}/documents"
+mkdir -p "${DEST}/data/homey" "${DEST}/data/kids-chores" "${DEST}/backups" "${DEST}/documents"
+
+if [ ! -d "${DEST}/modules/kids-chores" ]; then
+  echo "Kids Chores folder is missing from this checkout (${DEST}/modules/kids-chores)." >&2
+  echo "Branch ${BRANCH} is incomplete. Re-run after Kids Chores is merged into it." >&2
+  exit 1
+fi
+
+if [ ! -d "${DEST}/modules/homey" ]; then
+  echo "Homey folder is missing from this checkout (${DEST}/modules/homey)." >&2
+  exit 1
+fi
 
 if [ ! -f "${DEST}/.env" ]; then
   umask 077
@@ -62,13 +76,19 @@ EOF
   echo "Created ${DEST}/.env. Keep that file. The database cannot be opened without the key in it."
 fi
 
-# The gateway loads its code once, at start. A later git checkout does not
-# reach the running process, so an update has to recreate the container.
-docker compose -f "${DEST}/modules/homey/compose.yml" up -d --pull always --remove-orphans --force-recreate
+# Build Yuvomi from this checkout (MET Norway, hourly weather, Homey-NOR UI),
+# then recreate. Do not `--pull always` an upstream image — that skips the
+# fork's server/ and public/ and was why weather vanished after an "update".
+# The gateway also loads only at start, so it must be recreated too.
+COMPOSE=(docker compose -f "${DEST}/modules/homey/compose.yml")
+"${COMPOSE[@]}" build yuvomi
+"${COMPOSE[@]}" up -d --remove-orphans --force-recreate
 
+# Quiet wait: the gateway is a second behind `docker compose up`, and curl -S
+# would print "Failed to connect to 127.0.0.1 port 3000" on every attempt.
 ok=0
 for _ in $(seq 1 60); do
-  if curl -fsS "http://127.0.0.1:3000/health" >/dev/null; then
+  if curl -fs --connect-timeout 1 "http://127.0.0.1:3000/health" >/dev/null 2>&1; then
     ok=1
     break
   fi
@@ -82,4 +102,5 @@ if [ "$ok" -ne 1 ]; then
 fi
 
 echo "Yuvomi is running at http://${HOST}:3000"
-echo "Open that address, create an administrator, and paste the Homey address in the module."
+echo "Modules on disk: $(ls -1 "${DEST}/modules" | tr '\n' ' ')"
+echo "Open Settings → Modules → Active modules and enable Homey / Kids Chores if needed."
