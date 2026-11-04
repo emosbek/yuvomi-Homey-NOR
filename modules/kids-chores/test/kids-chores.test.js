@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { createKidsChoresServer, interpretWebhookApproval } from '../sidecar/server.js';
-import { createStore, localDateKey, localIsoWeekday } from '../sidecar/store.js';
+import { applySequentialLock, createStore, localDateKey, localIsoWeekday } from '../sidecar/store.js';
 
 /** Mirrors modules/kids-chores/browser.js maxDailyPoints for Node tests. */
 function maxDailyPoints(chores = []) {
@@ -685,6 +685,111 @@ test('API keeps webhook URL visible on admin settings round-trip', async () => {
     });
     assert.equal(bad.status, 400);
     assert.equal(bad.body.reason, 'invalid');
+
+    await close(server);
+  } finally {
+    await close(me);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('applySequentialLock hides later chores until earlier ones are done', () => {
+  const items = [
+    { id: 'a', done: false },
+    { id: 'b', done: false },
+    { id: 'c', done: false },
+  ];
+  assert.deepEqual(
+    applySequentialLock(items, false).map((i) => i.locked),
+    [false, false, false],
+  );
+  assert.deepEqual(
+    applySequentialLock(items, true).map((i) => ({ id: i.id, locked: i.locked })),
+    [
+      { id: 'a', locked: false },
+      { id: 'b', locked: true },
+      { id: 'c', locked: true },
+    ],
+  );
+  assert.deepEqual(
+    applySequentialLock(
+      [{ id: 'a', done: true }, { id: 'b', done: false }, { id: 'c', done: false }],
+      true,
+    ).map((i) => ({ id: i.id, locked: i.locked })),
+    [
+      { id: 'a', locked: false },
+      { id: 'b', locked: false },
+      { id: 'c', locked: true },
+    ],
+  );
+});
+
+test('API sequentialUnlock shows only the next open chore', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'kc-'));
+  const me = startMe((_req, res) => admin(res));
+  try {
+    const meUrl = await listen(me);
+    const server = createKidsChoresServer({
+      dataDir: dir,
+      yuvomiUrl: meUrl,
+      now: () => new Date('2026-11-03T12:00:00Z'),
+    });
+    const base = await listen(server);
+    const first = await call(base, '/api/extensions/kids-chores/today', { cookie: 'yuvomi.sid=ok' });
+    const jar = `yuvomi.sid=ok; ${first.cookie}`;
+    let csrf = first.body.csrfToken;
+
+    const days = [1, 2, 3, 4, 5, 6, 7];
+    const a = await call(base, '/api/extensions/kids-chores/chores', {
+      method: 'POST', cookie: jar, csrf, json: { title: 'First', points: 1, days },
+    });
+    csrf = a.body.csrfToken || csrf;
+    const b = await call(base, '/api/extensions/kids-chores/chores', {
+      method: 'POST', cookie: jar, csrf, json: { title: 'Second', points: 1, days },
+    });
+    csrf = b.body.csrfToken || csrf;
+    const c = await call(base, '/api/extensions/kids-chores/chores', {
+      method: 'POST', cookie: jar, csrf, json: { title: 'Third', points: 1, days },
+    });
+    csrf = c.body.csrfToken || csrf;
+    const idA = a.body.chores.find((x) => x.title === 'First').id;
+    const idB = b.body.chores.find((x) => x.title === 'Second').id;
+    const idC = c.body.chores.find((x) => x.title === 'Third').id;
+
+    const enabled = await call(base, '/api/extensions/kids-chores/settings', {
+      method: 'PUT', cookie: jar, csrf, json: { sequentialUnlock: true, pointGoal: 10 },
+    });
+    assert.equal(enabled.status, 200, JSON.stringify(enabled.body));
+    assert.equal(enabled.body.settings.sequentialUnlock, true);
+    csrf = enabled.body.csrfToken || csrf;
+
+    const today = await call(base, '/api/extensions/kids-chores/today', { cookie: jar });
+    assert.equal(today.body.open.length, 1);
+    assert.equal(today.body.open[0].id, idA);
+    assert.equal(today.body.items.length, 1);
+    assert.ok(!today.body.ranked, 'locked chores must not leak in the payload');
+
+    const blocked = await call(base, '/api/extensions/kids-chores/complete', {
+      method: 'POST', cookie: jar, csrf, json: { id: idB },
+    });
+    assert.equal(blocked.status, 409);
+    assert.equal(blocked.body.reason, 'locked');
+
+    const doneA = await call(base, '/api/extensions/kids-chores/complete', {
+      method: 'POST', cookie: jar, csrf, json: { id: idA },
+    });
+    assert.equal(doneA.status, 200, JSON.stringify(doneA.body));
+    assert.equal(doneA.body.open.length, 1);
+    assert.equal(doneA.body.open[0].id, idB);
+    assert.equal(doneA.body.items.length, 2);
+    csrf = doneA.body.csrfToken || csrf;
+
+    const doneB = await call(base, '/api/extensions/kids-chores/complete', {
+      method: 'POST', cookie: jar, csrf, json: { id: idB },
+    });
+    assert.equal(doneB.status, 200, JSON.stringify(doneB.body));
+    assert.equal(doneB.body.open[0].id, idC);
+    assert.equal(doneB.body.items.length, 3);
 
     await close(server);
   } finally {

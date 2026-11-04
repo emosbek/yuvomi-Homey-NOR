@@ -40,6 +40,8 @@
   "settings.notifyAdmin": "Lagre i poenghistorikk når målet er nådd",
   "settings.showOnWall": "Vis på vegg / fullskjerm",
   "settings.showOnWallHint": "Når det finnes oppgaver i dag, vises de på husholdningens veggskjerm.",
+  "settings.sequentialUnlock": "Lås opp i listens rekkefølge",
+  "settings.sequentialUnlockHint": "Bare neste oppgave vises til de over er gjort. Dra listen for å sette hierarkiet.",
   "settings.save": "Lagre innstillinger",
   "wall.score": "{{earned}} / {{goal}} poeng",
   "wall.openCount": "{{count}} åpne",
@@ -89,5 +91,6 @@
   "reason.limit": "For mange oppgaver.",
   "reason.webhook": "Webhook er ikke satt opp eller svarte ikke.",
   "reason.webhook_denied": "Oppgaven ble ikke godkjent av mottakersystemet.",
+  "reason.locked": "Fullfør oppgavene over først.",
   "reason.upstream": "Yuvomi svarte ikke."
 }

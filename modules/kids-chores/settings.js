@@ -264,6 +264,30 @@ export async function render(container, { section, signal }) {
     wallField.append(wallSwitch, wallHint);
     settingsForm.append(wallField);
 
+    const seqSwitch = document.createElement('label');
+    seqSwitch.className = 'toggle-row toggle-row--switch kc-wall-switch';
+    const seqLabel = document.createElement('span');
+    seqLabel.className = 'toggle-row__label';
+    seqLabel.textContent = t('extensions.kids-chores.settings.sequentialUnlock');
+    const seqToggle = document.createElement('span');
+    seqToggle.className = 'toggle';
+    const seqInput = document.createElement('input');
+    seqInput.type = 'checkbox';
+    seqInput.setAttribute('role', 'switch');
+    seqInput.checked = settings.sequentialUnlock === true;
+    const seqTrack = document.createElement('span');
+    seqTrack.className = 'toggle__track';
+    seqTrack.setAttribute('aria-hidden', 'true');
+    seqToggle.append(seqInput, seqTrack);
+    seqSwitch.append(seqLabel, seqToggle);
+    const seqHint = document.createElement('p');
+    seqHint.className = 'form-hint';
+    seqHint.textContent = t('extensions.kids-chores.settings.sequentialUnlockHint');
+    const seqField = document.createElement('div');
+    seqField.className = 'form-switch kc-wall-switch-wrap';
+    seqField.append(seqSwitch, seqHint);
+    settingsForm.append(seqField);
+
     const save = document.createElement('button');
     save.type = 'button';
     save.className = 'btn btn--primary';
@@ -279,6 +303,7 @@ export async function render(container, { section, signal }) {
           progressIcon: icon.value,
           notifyAdmin: notify.checked,
           showOnWall: wallInput.checked,
+          sequentialUnlock: seqInput.checked,
           webhookUrl: webhook.value.trim(),
         };
         const next = await choresApi('/settings', { method: 'PUT', body, csrf, signal });

@@ -7,7 +7,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import http from 'node:http';
 import https from 'node:https';
 import { moduleAccess, createSessionResolver } from './session.js';
-import { createStore, localDateKey, localIsoWeekday } from './store.js';
+import { applySequentialLock, createStore, localDateKey, localIsoWeekday } from './store.js';
 
 const PREFIX = '/api/extensions/kids-chores';
 const ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -202,41 +202,53 @@ function postWebhook(url, payload) {
   });
 }
 
-function todayBundle(store, now = new Date()) {
+function todayState(store, now = new Date()) {
   const settings = store.publicSettings();
   const tz = settings.timezone;
   const dateKey = localDateKey(tz, now);
   const weekday = localIsoWeekday(tz, now);
   const chores = store.listChores().filter((c) => c.active !== false && c.days.includes(weekday));
   const doneMap = store.snapshot().completions[dateKey] || {};
-  const items = chores.map((c) => ({
-    id: c.id,
-    title: c.title,
-    points: c.points,
-    done: Boolean(doneMap[c.id]),
-    completedAt: doneMap[c.id]?.at || null,
-  }));
-  const earned = items.filter((i) => i.done).reduce((sum, i) => sum + i.points, 0);
+  const ranked = applySequentialLock(
+    chores.map((c) => ({
+      id: c.id,
+      title: c.title,
+      points: c.points,
+      done: Boolean(doneMap[c.id]),
+      completedAt: doneMap[c.id]?.at || null,
+    })),
+    settings.sequentialUnlock === true,
+  );
+  /* Locked chores stay out of the UI until the ones above are done. */
+  const items = ranked.filter((i) => !i.locked).map(({ locked, ...rest }) => rest);
+  const earned = ranked.filter((i) => i.done).reduce((sum, i) => sum + i.points, 0);
   const goal = settings.pointGoal;
   const percent = goal > 0 ? Math.min(100, Math.round((earned / goal) * 100)) : 0;
   const goalReached = earned >= goal;
-  const allDone = items.length > 0 && items.every((i) => i.done);
+  const allDone = ranked.length > 0 && ranked.every((i) => i.done);
   const open = items.filter((i) => !i.done);
   return {
-    date: dateKey,
-    weekday,
-    settings,
-    items,
-    open,
-    earned,
-    goal,
-    percent,
-    goalReached,
-    allDone,
-    congratsMessage: settings.congratsMessage,
-    progressIcon: settings.progressIcon,
-    goalMeta: store.snapshot().goals[dateKey] || null,
+    ranked,
+    bundle: {
+      date: dateKey,
+      weekday,
+      settings,
+      items,
+      open,
+      earned,
+      goal,
+      percent,
+      goalReached,
+      allDone,
+      congratsMessage: settings.congratsMessage,
+      progressIcon: settings.progressIcon,
+      goalMeta: store.snapshot().goals[dateKey] || null,
+    },
   };
+}
+
+function todayBundle(store, now = new Date()) {
+  return todayState(store, now).bundle;
 }
 
 async function maybeFireGoal(store, session, now = new Date()) {
@@ -410,6 +422,15 @@ export function createKidsChoresHandler({
             role: session.role,
           });
           return;
+        }
+
+        const locked = todayState(store, at).ranked.find((row) => row.id === id && row.locked);
+        if (locked) {
+          throw new HttpError(
+            409,
+            'locked',
+            'Finish the chores above this one first.',
+          );
         }
 
         let choreWebhookSent = false;

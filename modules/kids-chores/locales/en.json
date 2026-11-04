@@ -40,6 +40,8 @@
   "settings.notifyAdmin": "Record in points history when the goal is reached",
   "settings.showOnWall": "Show on wall / full screen",
   "settings.showOnWallHint": "When chores are scheduled for today, list them on the household wall display.",
+  "settings.sequentialUnlock": "Unlock in list order",
+  "settings.sequentialUnlockHint": "Only the next chore is shown until the ones above it are done. Drag the list to set the order.",
   "settings.save": "Save settings",
   "wall.score": "{{earned}} / {{goal}} points",
   "wall.openCount": "{{count}} open",
@@ -89,5 +91,6 @@
   "reason.limit": "Too many chores.",
   "reason.webhook": "Webhook is not configured or did not answer.",
   "reason.webhook_denied": "The receiving system did not approve this chore.",
+  "reason.locked": "Finish the chores above this one first.",
   "reason.upstream": "Yuvomi did not answer."
 }

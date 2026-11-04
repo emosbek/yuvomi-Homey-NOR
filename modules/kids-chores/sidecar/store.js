@@ -20,6 +20,7 @@ function empty() {
       webhookUrl: null,
       notifyAdmin: true,
       showOnWall: false,
+      sequentialUnlock: false,
       timezone: 'Europe/Oslo',
       progressIcon: 'sun',
     },
@@ -112,6 +113,7 @@ function cleanSettings(raw, fallback) {
   }
   if (raw.notifyAdmin !== undefined) base.notifyAdmin = raw.notifyAdmin !== false;
   if (raw.showOnWall !== undefined) base.showOnWall = raw.showOnWall === true;
+  if (raw.sequentialUnlock !== undefined) base.sequentialUnlock = raw.sequentialUnlock === true;
   if (raw.timezone !== undefined) {
     const tz = String(raw.timezone || '').trim();
     if (tz && tz.length <= 64) {
@@ -172,6 +174,29 @@ export function localIsoWeekday(timeZone, now = new Date()) {
     .format(now);
   const map = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 };
   return map[weekday] || 1;
+}
+
+/**
+ * List order is the hierarchy: until every chore above is done, later ones
+ * stay locked (and the UI hides them). Done chores stay unlocked so progress
+ * remains visible.
+ *
+ * @param {Array<{ id: string, done?: boolean }>} items  already sorted for today
+ * @param {boolean} sequentialUnlock
+ */
+export function applySequentialLock(items, sequentialUnlock) {
+  const list = Array.isArray(items) ? items : [];
+  if (!sequentialUnlock) {
+    return list.map((item) => ({ ...item, locked: false }));
+  }
+  let lockRest = false;
+  return list.map((item) => {
+    if (lockRest && !item.done) {
+      return { ...item, locked: true };
+    }
+    if (!item.done) lockRest = true;
+    return { ...item, locked: false };
+  });
 }
 
 export function createStore(dir) {
@@ -237,6 +262,7 @@ export function createStore(dir) {
         displayTitle: s.displayTitle || '',
         notifyAdmin: s.notifyAdmin !== false,
         showOnWall: s.showOnWall === true,
+        sequentialUnlock: s.sequentialUnlock === true,
         timezone: s.timezone,
         progressIcon: s.progressIcon === 'star' ? 'star' : 'sun',
         webhookSet: Boolean(s.webhookUrl),

@@ -14,6 +14,7 @@ Most of the module lives under `modules/kids-chores/`. Wall/full-screen support 
 - When every chore for today is done, the configured congratulation message is shown.
 - Open chores also appear under **Today at a glance** (unless the overview widget is already visible — no echo). Tap a row to mark it done.
 - Optional **Show on wall / full screen** switch: when on and today has chores, the household wall lists them beside Who / Weather (also tappable to complete).
+- Optional **Unlock in list order**: only the next chore is shown until the ones above it are done. Drag the chore list to set that hierarchy.
 
 ## Install on this fork (Raspberry Pi)
 
