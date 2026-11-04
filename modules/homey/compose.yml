@@ -33,12 +33,14 @@ services:
       - ../../backups:/backups
       - ../../modules:/app/modules
       - ../../documents:/documents
+    # Informational only — install-pi.sh waits on :3001 itself. Do not gate the
+    # gateway on service_healthy: a crash then hides behind "unhealthy" with no
+    # logs, and a slow Pi migration looks like a hard failure.
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3000/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 10s
       timeout: 5s
       retries: 30
-      # First boot after a schema jump on a Pi can take well over a minute.
       start_period: 180s
     logging:
       options:
@@ -51,7 +53,7 @@ services:
     network_mode: host
     depends_on:
       yuvomi:
-        condition: service_healthy
+        condition: service_started
     environment:
       HOMEY_GATEWAY_PORT: "3000"
       HOMEY_BIND: "0.0.0.0"
