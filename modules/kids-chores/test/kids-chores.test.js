@@ -267,6 +267,81 @@ test('API reorders chores and updates a chore', async () => {
   }
 });
 
+test('API reset-today sends reward webhook with earned 0', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'kc-'));
+  const hooks = [];
+  const webhook = http.createServer((req, res) => {
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', () => {
+      hooks.push(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+      res.writeHead(200);
+      res.end('ok');
+    });
+  });
+  const me = startMe((_req, res) => admin(res));
+  try {
+    const meUrl = await listen(me);
+    const hookUrl = await listen(webhook);
+    const fixed = new Date('2026-11-03T10:00:00Z');
+    const server = createKidsChoresServer({
+      dataDir: dir,
+      yuvomiUrl: meUrl,
+      now: () => fixed,
+    });
+    const base = await listen(server);
+    const first = await call(base, '/api/extensions/kids-chores/today', { cookie: 'yuvomi.sid=ok' });
+    const jar = `yuvomi.sid=ok; ${first.cookie}`;
+    const csrf = first.body.csrfToken;
+
+    await call(base, '/api/extensions/kids-chores/settings', {
+      method: 'PUT',
+      cookie: jar,
+      csrf,
+      json: { pointGoal: 5, webhookUrl: `${hookUrl}/reward` },
+    });
+    const created = await call(base, '/api/extensions/kids-chores/chores', {
+      method: 'POST',
+      cookie: jar,
+      csrf,
+      json: { title: 'Task', points: 5, days: [1, 2, 3, 4, 5] },
+    });
+    const choreId = created.body.chores[0].id;
+    await call(base, '/api/extensions/kids-chores/complete', {
+      method: 'POST',
+      cookie: jar,
+      csrf,
+      json: { id: choreId },
+    });
+    assert.equal(hooks[0].event, 'kids_chores.goal_reached');
+    assert.equal(hooks[0].earned, 5);
+
+    const reset = await call(base, '/api/extensions/kids-chores/reset-today', {
+      method: 'POST',
+      cookie: jar,
+      csrf,
+      json: {},
+    });
+    assert.equal(reset.status, 200, JSON.stringify(reset.body));
+    assert.equal(reset.body.earned, 0);
+    assert.equal(reset.body.pointsResetWebhookSent, true);
+    assert.equal(hooks.length, 2);
+    assert.equal(hooks[1].event, 'kids_chores.points_reset');
+    assert.equal(hooks[1].earned, 0);
+    assert.equal(hooks[1].goal, 5);
+    assert.equal(hooks[1].percent, 0);
+    assert.equal(hooks[1].previousEarned, 5);
+    assert.equal(hooks[1].state, 'no');
+    assert.equal(hooks[1].done, false);
+
+    await close(server);
+  } finally {
+    await close(me);
+    await close(webhook);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('API fires reset (No) webhooks when admin resets today', async () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'kc-'));
   const hooks = [];

@@ -363,8 +363,10 @@ export function createKidsChoresHandler({
 
       if (req.method === 'POST' && sub === '/reset-today') {
         if (session.role !== 'admin') throw new HttpError(403, 'forbidden', 'Admin only.');
+        const before = todayBundle(store, now());
         const { resetTargets } = await store.resetToday(now());
         const settings = store.snapshot().settings;
+        const dateKey = localDateKey(settings.timezone || 'Europe/Oslo', now());
         let resetWebhooksSent = 0;
         for (const chore of resetTargets) {
           if (!chore.resetWebhookUrl) continue;
@@ -373,6 +375,23 @@ export function createKidsChoresHandler({
             done: false,
           });
           if (result.ok) resetWebhooksSent += 1;
+        }
+        let pointsResetWebhookSent = false;
+        if (settings.webhookUrl) {
+          const result = await postWebhook(settings.webhookUrl, {
+            event: 'kids_chores.points_reset',
+            module: 'kids-chores',
+            date: dateKey,
+            earned: 0,
+            goal: settings.pointGoal,
+            percent: 0,
+            previousEarned: before.earned,
+            state: 'no',
+            done: false,
+            timezone: settings.timezone,
+            triggeredBy: session?.displayName || session?.id || null,
+          });
+          pointsResetWebhookSent = result.ok === true;
         }
         reply(req, res, 200, {
           ok: true,
@@ -383,6 +402,7 @@ export function createKidsChoresHandler({
           settings: store.publicSettings({ includeSecrets: true }),
           resetWebhooksSent,
           resetWebhookTargets: resetTargets.length,
+          pointsResetWebhookSent,
         });
         return;
       }
