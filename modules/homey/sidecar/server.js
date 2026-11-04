@@ -191,6 +191,7 @@ function parsePin(body) {
       homeyIconId,
       homeyLabel: label,
       units: mode === 'display' ? pinUnits(body) : '',
+      newLine: body.newLine === true,
     };
   }
   if (body.kind === 'flow') {
@@ -207,6 +208,7 @@ function parsePin(body) {
       homeyIconId,
       homeyLabel: label,
       units: '',
+      newLine: body.newLine === true,
     };
   }
   if (body.kind === 'webhook') {
@@ -225,6 +227,7 @@ function parsePin(body) {
       homeyIconId,
       homeyLabel: label,
       units: '',
+      newLine: body.newLine === true,
     };
   }
   throw new HttpError(400, 'invalid', 'Unknown button kind.');
@@ -252,6 +255,7 @@ function parsePinPatch(body, current) {
     if (body.icon !== '' && !icon) throw new HttpError(400, 'invalid', 'Icon is invalid.');
     next.icon = icon || suggestIcon(current.capabilityId, current.deviceClass, current.kind);
   }
+  if (body.newLine !== undefined) next.newLine = body.newLine === true;
   return next;
 }
 
@@ -280,6 +284,7 @@ function publicPin(pin, live = {}) {
     value: live.value === undefined ? null : live.value,
     reading: live.reading || null,
     unavailable: live.unavailable === true,
+    newLine: pin.newLine === true,
   };
 }
 
@@ -915,6 +920,24 @@ export function createHomeyHandler({
     }
 
     if (req.method === 'GET' && rest === '/pins') {
+      reply(req, res, 200, { pins: await livePins() });
+      return;
+    }
+
+    if (req.method === 'PUT' && rest === '/pins/order') {
+      requireWrite(access);
+      if (!body || typeof body !== 'object' || Array.isArray(body)) {
+        throw new HttpError(400, 'invalid', 'Body must be JSON.');
+      }
+      if (!Array.isArray(body.order)) throw new HttpError(400, 'invalid', 'Order is invalid.');
+      const order = body.order.map((id) => String(id || ''));
+      if (order.some((id) => !PIN_RE.test(id))) throw new HttpError(400, 'invalid', 'Order is invalid.');
+      try {
+        await store.reorderPins(order);
+      } catch (err) {
+        if (err?.reason === 'invalid') throw new HttpError(400, 'invalid', err.message || 'Order is invalid.');
+        throw storeFailure(err);
+      }
       reply(req, res, 200, { pins: await livePins() });
       return;
     }

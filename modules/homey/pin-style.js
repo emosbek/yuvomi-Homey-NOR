@@ -9,6 +9,7 @@ export const ICON_CHOICES = [
   'thermometer',
   'droplet',
   'volume-2',
+  'volume-x',
   'speaker',
   'flame',
   'heater',
@@ -92,6 +93,7 @@ export function suggestIcon(capabilityId, deviceClass, kind) {
     return deviceClassIcon(deviceClass) || 'power';
   }
   if (id === 'dim' || id.startsWith('dim.')) return deviceClassIcon(deviceClass) || 'lightbulb';
+  if (id === 'volume_mute' || id.startsWith('volume_mute')) return 'volume-x';
   if (id === 'volume_set' || id.startsWith('volume_') || id === 'speaker_playing') return 'volume-2';
   if (id === 'target_temperature' || id.startsWith('target_temperature')) {
     return deviceClassIcon(deviceClass) || 'thermometer';

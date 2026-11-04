@@ -64,7 +64,7 @@ function pinTile(pin, { access, onActivate }) {
     || String(pin.capabilityId || '').includes('temperature');
   const face = document.createElement(display ? 'div' : 'button');
   if (!display) face.type = 'button';
-  face.className = `card card--padded homey-pin homey-widget__pin${display ? ' homey-pin--display' : ' card--interactive'}${hasReading ? ' homey-pin--meter' : ''}${pin.value === true ? ' homey-pin--on' : ''}`;
+  face.className = `card card--padded homey-pin homey-widget__pin${display ? ' homey-pin--display' : ' card--interactive'}${hasReading ? ' homey-pin--meter' : ''}${pin.value === true ? ' homey-pin--on' : ''}${pin.newLine ? ' homey-widget__pin--newline' : ''}`;
   face.dataset.pinId = pin.id;
   if (!display && pin.mode === 'toggle') {
     face.setAttribute('aria-pressed', pin.value === true ? 'true' : 'false');

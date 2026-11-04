@@ -15,6 +15,7 @@ import {
   companionTemperature,
   formatNumericPinValue,
   formatReading,
+  ICON_CHOICES,
   iconIdFromObj,
   isDisplayMode,
   suggestIcon,
@@ -1022,6 +1023,8 @@ test('pin style picks icons and formats sensor readings', () => {
   assert.equal(suggestIcon('measure_temperature', 'sensor', 'capability'), 'thermometer');
   assert.equal(suggestIcon('onoff', 'light', 'capability'), 'lightbulb');
   assert.equal(suggestIcon('volume_set', 'speaker', 'capability'), 'volume-2');
+  assert.equal(suggestIcon('volume_mute', 'speaker', 'capability'), 'volume-x');
+  assert.equal(ICON_CHOICES.includes('volume-x'), true);
   assert.equal(suggestIcon('', '', 'flow'), 'workflow');
   assert.equal(isDisplayMode({ mode: 'display' }), true);
   assert.equal(formatNumericPinValue({
@@ -1298,6 +1301,7 @@ test('the overview widget loads pinned buttons and can activate them', () => {
   assert.match(widget, /ensureStyle\(STYLE\)/);
   assert.match(widget, /appendPinIcon/);
   assert.match(widget, /homey-pin--meter/);
+  assert.match(widget, /homey-widget__pin--newline/);
 });
 
 test('the Homey page still imports deviceIcon for the Add from Homey catalog', () => {
@@ -1305,6 +1309,135 @@ test('the Homey page still imports deviceIcon for the Add from Homey catalog', (
   assert.match(page, /\bdeviceIcon\b/);
   assert.match(page, /deviceIcon,/);
   assert.equal(page.includes('function deviceIcon'), false);
+  assert.match(page, /makeSortable/);
+  assert.match(page, /\/pins\/order/);
+  assert.match(page, /newLine/);
+  assert.match(page, /volume-x|ICON_CHOICES/);
+});
+
+test('sidecar reorders pins and remembers a new line break', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'homey-order-'));
+  const me = startMe((req, res) => {
+    if (!String(req.headers.cookie || '').includes('yuvomi.sid=ok')) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end('{"error":"Unauthorized"}');
+      return;
+    }
+    admin(res);
+  });
+  const meUrl = await listen(me.server);
+  const fakeHomey = http.createServer((req, res) => {
+    if (req.url === '/api/manager/devices/device/') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        lamp: {
+          id: 'lamp',
+          name: 'Lampe',
+          class: 'light',
+          capabilities: ['onoff', 'volume_mute'],
+          capabilitiesObj: {
+            onoff: { value: false, setable: true, type: 'boolean', title: 'På' },
+            volume_mute: { value: true, setable: true, type: 'boolean', title: 'Mute' },
+          },
+        },
+      }));
+      return;
+    }
+    if (req.method === 'PUT' && req.url?.startsWith('/api/manager/devices/device/lamp/capability/')) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end('{}');
+      return;
+    }
+    res.writeHead(404).end();
+  });
+  const homeyUrl = await listen(fakeHomey);
+  const sidecar = createHomeyServer({
+    dataDir: dir,
+    yuvomiUrl: meUrl,
+    allowLoopback: true,
+  });
+  const base = await listen(sidecar);
+  try {
+    const status = await call(base, '/api/extensions/homey/status', { cookie: 'yuvomi.sid=ok' });
+    const jar = `yuvomi.sid=ok; ${status.cookie}`;
+    const saved = await call(base, '/api/extensions/homey/connection', {
+      method: 'PUT',
+      cookie: jar,
+      csrf: status.body.csrfToken,
+      json: { address: homeyUrl, token: TOKEN },
+    });
+    assert.equal(saved.status, 200, JSON.stringify(saved.body));
+    const first = await call(base, '/api/extensions/homey/pins', {
+      method: 'POST',
+      cookie: jar,
+      csrf: saved.body.csrfToken,
+      json: {
+        kind: 'capability',
+        label: 'Lys',
+        deviceId: 'lamp',
+        capabilityId: 'onoff',
+        deviceClass: 'light',
+        mode: 'toggle',
+        iconMode: 'custom',
+        icon: 'lightbulb',
+      },
+    });
+    assert.equal(first.status, 201, JSON.stringify(first.body));
+    const second = await call(base, '/api/extensions/homey/pins', {
+      method: 'POST',
+      cookie: jar,
+      csrf: first.body.csrfToken,
+      json: {
+        kind: 'capability',
+        label: 'Mute',
+        deviceId: 'lamp',
+        capabilityId: 'volume_mute',
+        deviceClass: 'light',
+        mode: 'toggle',
+        iconMode: 'custom',
+        icon: 'volume-x',
+      },
+    });
+    assert.equal(second.status, 201, JSON.stringify(second.body));
+    assert.equal(second.body.pin.icon, 'volume-x');
+    assert.equal(second.body.pin.newLine, false);
+    const a = first.body.pin.id;
+    const b = second.body.pin.id;
+    const reordered = await call(base, '/api/extensions/homey/pins/order', {
+      method: 'PUT',
+      cookie: jar,
+      csrf: second.body.csrfToken,
+      json: { order: [b, a] },
+    });
+    assert.equal(reordered.status, 200, JSON.stringify(reordered.body));
+    assert.deepEqual(reordered.body.pins.map((pin) => pin.id), [b, a]);
+    const broken = await call(base, `/api/extensions/homey/pins/${b}`, {
+      method: 'PATCH',
+      cookie: jar,
+      csrf: reordered.body.csrfToken,
+      json: { newLine: true },
+    });
+    assert.equal(broken.status, 200, JSON.stringify(broken.body));
+    assert.equal(broken.body.pin.newLine, true);
+    const list = await call(base, '/api/extensions/homey/pins', { cookie: jar });
+    assert.equal(list.body.pins[0].id, b);
+    assert.equal(list.body.pins[0].newLine, true);
+    assert.equal(list.body.pins[0].icon, 'volume-x');
+    assert.equal(list.body.pins[1].id, a);
+    const refused = await call(base, '/api/extensions/homey/pins/order', {
+      method: 'PUT',
+      cookie: jar,
+      csrf: list.body.csrfToken,
+      json: { order: [a] },
+    });
+    assert.equal(refused.status, 400);
+    assert.equal(refused.body.reason, 'invalid');
+  } finally {
+    await close(sidecar);
+    await close(fakeHomey);
+    await close(me.server);
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('Yuvomi accepts the Homey manifest', () => {

@@ -27,6 +27,51 @@
   gap: var(--space-2);
 }
 
+.homey-pin-card--newline {
+  grid-column-start: 1;
+}
+
+.homey-pin-card__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.homey-pin-card__drag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  cursor: grab;
+  touch-action: none;
+}
+
+.homey-pin-card__drag:active {
+  cursor: grabbing;
+}
+
+.homey-pin-card__drag svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.homey-pin-card.sortable-chosen,
+.homey-widget__pin.sortable-chosen {
+  opacity: 1;
+}
+
+.homey-pin-card.sortable-ghost,
+.homey-widget__pin.sortable-ghost {
+  opacity: 0.4;
+}
+
 .homey-pin {
   display: flex;
   flex-direction: column;
@@ -224,6 +269,10 @@
 
 .homey-widget__pin {
   min-height: 6.25rem;
+}
+
+.homey-widget__pin--newline {
+  grid-column-start: 1;
 }
 
 .homey-widget__hint {
