@@ -145,5 +145,35 @@ export function createStore(dir) {
         return { ...current, pins };
       }).then((next) => next.pins.find((pin) => pin.id === id));
     },
+    reorderPins(order) {
+      return mutate((current) => {
+        if (!Array.isArray(order)) {
+          const err = new Error('Order is invalid.');
+          err.status = 400;
+          err.reason = 'invalid';
+          throw err;
+        }
+        const ids = order.map((id) => String(id || '')).filter(Boolean);
+        if (ids.length !== current.pins.length || new Set(ids).size !== ids.length) {
+          const err = new Error('Order is invalid.');
+          err.status = 400;
+          err.reason = 'invalid';
+          throw err;
+        }
+        const byId = new Map(current.pins.map((pin) => [pin.id, pin]));
+        const pins = [];
+        for (const id of ids) {
+          const pin = byId.get(id);
+          if (!pin) {
+            const err = new Error('Order is invalid.');
+            err.status = 400;
+            err.reason = 'invalid';
+            throw err;
+          }
+          pins.push(pin);
+        }
+        return { ...current, pins };
+      });
+    },
   };
 }

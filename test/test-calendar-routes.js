@@ -54,6 +54,29 @@ const {
 } = await import('../public/utils/recurrence-scope.js');
 const db = dbmod.get();
 
+// Die Standard-Personen eines Kalenders stehen seit #1897 in der Join-Tabelle
+// (Migration 265); die alte Spalte liest niemand mehr. Eine verwaiste Person
+// (Konto weg) laesst der Fremdschluessel nicht zu - sie entsteht hier wie in
+// einer Datenbank ohne ihn (Restore, Altbestand), damit der JOIN auf users
+// weiter geprueft ist.
+function withCalendarDefault(calendarId, userId) {
+  const id = Number(calendarId);
+  db.prepare('DELETE FROM external_calendar_assignees WHERE calendar_id = ?').run(id);
+  if (userId == null) return id;
+  const orphan = !db.prepare('SELECT 1 FROM users WHERE id = ?').get(userId);
+  if (orphan) db.pragma('foreign_keys = OFF');
+  try {
+    db.prepare('INSERT INTO external_calendar_assignees (calendar_id, user_id) VALUES (?, ?)').run(id, userId);
+  } finally {
+    if (orphan) db.pragma('foreign_keys = ON');
+  }
+  return id;
+}
+const calendarDefaultOf = (source, externalId) => db.prepare(`
+  SELECT a.user_id AS a FROM external_calendar_assignees a JOIN external_calendars ec ON ec.id = a.calendar_id
+  WHERE ec.source = ? AND ec.external_id = ? ORDER BY a.position
+`).get(source, externalId)?.a ?? null;
+
 // ── Nutzer anlegen (IDs deterministisch ab 1: eigener Prozess je Testdatei) ──────
 const ADMIN = { id: 1, role: 'admin' };
 const MARIA = { id: 2, role: 'member' };
@@ -435,8 +458,8 @@ test('PATCH /external-calendars — setzt Standard-Zuweisung (#459)', async () =
   const res = await call('PATCH', '/external-calendars', { body: { source: 'google', external_id: 'cal-xyz', default_assignee_user_id: 2 } });
   assert.equal(res.status, 200);
   assert.equal(res.body.data.default_assignee_user_id, 2);
-  const row = db.prepare("SELECT default_assignee_user_id AS a FROM external_calendars WHERE source='google' AND external_id='cal-xyz'").get();
-  assert.equal(row.a, 2);
+  assert.equal(calendarDefaultOf('google', 'cal-xyz'), 2);
+  assert.deepEqual(res.body.data.default_assignee_user_ids, [2]);
   // null wieder entfernen
   const cleared = await call('PATCH', '/external-calendars', { body: { source: 'google', external_id: 'cal-xyz', default_assignee_user_id: null } });
   assert.equal(cleared.body.data.default_assignee_user_id, null);
@@ -468,9 +491,9 @@ test('PATCH /external-calendars — legt die Zeile für einen bekannten, noch ni
     assert.equal(res.status, 200, 'vorher antwortete der Server hier mit 404');
 
     const row = db.prepare(
-      "SELECT name, default_assignee_user_id AS a FROM external_calendars WHERE source='caldav' AND external_id='https://dav.example/privat/'"
+      "SELECT name FROM external_calendars WHERE source='caldav' AND external_id='https://dav.example/privat/'"
     ).get();
-    assert.equal(row.a, 2);
+    assert.equal(calendarDefaultOf('caldav', 'https://dav.example/privat/'), 2);
     assert.equal(row.name, 'Privat', 'der Name kommt aus der Auswahlliste, nicht aus dem Request');
   } finally {
     // Die Datenbank wird über die ganze Datei geteilt, und ein Nachbartest
@@ -501,10 +524,10 @@ test('PATCH /external-calendars — ein unbekannter Kalender bleibt 404 (#730)',
 
 test('default-assignee-backfill - füllt nur unzugewiesene Termine aus Kalendern mit Standard-Zuweisung (#1154)', async () => {
   const route = '/external-calendars/default-assignee-backfill';
-  const calendar = (source, externalId, assignee) => db.prepare(`
-    INSERT INTO external_calendars (source, external_id, name, default_assignee_user_id)
-    VALUES (?, ?, 'Backfill', ?)
-  `).run(source, externalId, assignee).lastInsertRowid;
+  const calendar = (source, externalId, assignee) => withCalendarDefault(db.prepare(`
+    INSERT INTO external_calendars (source, external_id, name)
+    VALUES (?, ?, 'Backfill')
+  `).run(source, externalId).lastInsertRowid, assignee);
   const event = (title, { refId = null, subId = null, source = null, assignedTo = null, rows = [], visibility = 'all', documentId = null, targetGoogle = null, targetCaldav = null, ownUid = false } = {}) => {
     const id = db.prepare(`
       INSERT INTO calendar_events
@@ -534,9 +557,10 @@ test('default-assignee-backfill - füllt nur unzugewiesene Termine aus Kalendern
   const orphan  = calendar('caldav', 'https://dav.example/backfill-c/', 99999);
   const apple   = calendar('apple', 'https://icloud.example/backfill/', MARIA.id);
   const subId = db.prepare(`
-    INSERT INTO ics_subscriptions (name, url, color, created_by, shared, default_assignee_user_id)
-    VALUES ('Backfill', 'https://x/backfill.ics', '#123456', 1, 1, ?)
-  `).run(MARIA.id).lastInsertRowid;
+    INSERT INTO ics_subscriptions (name, url, color, created_by, shared)
+    VALUES ('Backfill', 'https://x/backfill.ics', '#123456', 1, 1)
+  `).run().lastInsertRowid;
+  db.prepare('INSERT INTO ics_subscription_assignees (subscription_id, user_id) VALUES (?, ?)').run(subId, MARIA.id);
 
   // Ein eingeschränkter Anhang: die neue Person muss ihn danach auch öffnen dürfen.
   const documentId = db.prepare(`
@@ -641,10 +665,10 @@ test('default-assignee-backfill - füllt nur unzugewiesene Termine aus Kalendern
 
 test('default-assignee-backfill - die Bestätigung bindet die Menge, nicht nur ihre Größe (#1171)', async () => {
   const route = '/external-calendars/default-assignee-backfill';
-  const refId = db.prepare(`
-    INSERT INTO external_calendars (source, external_id, name, default_assignee_user_id)
-    VALUES ('caldav', 'https://dav.example/backfill-token/', 'Token', ?)
-  `).run(TOM.id).lastInsertRowid;
+  const refId = withCalendarDefault(db.prepare(`
+    INSERT INTO external_calendars (source, external_id, name)
+    VALUES ('caldav', 'https://dav.example/backfill-token/', 'Token')
+  `).run().lastInsertRowid, TOM.id);
   const mk = (title) => db.prepare(`
     INSERT INTO calendar_events (title, start_datetime, created_by, external_source, calendar_ref_id)
     VALUES (?, '2035-06-01T10:00', ?, 'caldav', ?)
@@ -671,7 +695,7 @@ test('default-assignee-backfill - die Bestätigung bindet die Menge, nicht nur i
 
     // Dieselben Termine, andere Person: eine umgestellte Standard-Zuweisung ist ebenfalls eine andere Menge.
     const recounted = (await call('GET', route)).body.data;
-    db.prepare('UPDATE external_calendars SET default_assignee_user_id = ? WHERE id = ?').run(MARIA.id, refId);
+    withCalendarDefault(refId, MARIA.id);
     const reassigned = await call('POST', route, { body: { expected_count: recounted.count, expected_token: recounted.token } });
     assert.equal(reassigned.status, 409, 'bestaetigt war Tom, nicht Maria');
     assert.equal(who(arrived), null);
@@ -704,10 +728,10 @@ test('default-assignee-backfill - die Bestätigung bindet die Menge, nicht nur i
 // ────────────────────────────────────────────────────────────────────────────
 
 function seedMovedFixture() {
-  const calendar = (source, externalId, assignee) => Number(db.prepare(`
-    INSERT INTO external_calendars (source, external_id, name, default_assignee_user_id)
-    VALUES (?, ?, 'Moved', ?)
-  `).run(source, externalId, assignee).lastInsertRowid);
+  const calendar = (source, externalId, assignee) => withCalendarDefault(db.prepare(`
+    INSERT INTO external_calendars (source, external_id, name)
+    VALUES (?, ?, 'Moved')
+  `).run(source, externalId).lastInsertRowid, assignee);
   const account = (name) => Number(db.prepare(`
     INSERT INTO caldav_accounts (name, caldav_url, username, password) VALUES (?, ?, 'u', 'p')
   `).run(name, `https://dav.example/${name}/`).lastInsertRowid);
@@ -826,6 +850,8 @@ test('default-assignee-backfill - die Vorschau listet vor #1306 umgezogene Termi
     assert.deepEqual(first, {
       event_id: ids.moved, title: 'mv-moved', start_datetime: '2036-02-04T10:00', all_day: 0,
       calendar_name: 'Moved', from_user_id: MARIA.id, from_name: 'Maria', to_user_id: TOM.id, to_name: 'Tom',
+      // Die Mengen (#1897), mit einer Person je Kalender je ein Eintrag.
+      from_user_ids: [MARIA.id], from_names: ['Maria'], to_user_ids: [TOM.id], to_names: ['Tom'],
     }, 'Titel, Datum, Kalender und "X -> Y" fuer die Vorschau');
   } finally {
     cleanup();
@@ -1049,7 +1075,7 @@ test('default-assignee-backfill - die Bestaetigung prueft die Umzuege in Happen 
     // Aufruf im Protokoll, hat die Pruefung nach dem ersten Happen Luft gegeben.
     db.prepare = function prepareSpy(sql) {
       const stmt = original.call(this, sql);
-      if (!String(sql).includes('JOIN event_assignments cur') || !String(sql).includes('e.id = @eventId')) return stmt;
+      if (!String(sql).includes('eca.id <> ec.id') || !String(sql).includes('e.id = @eventId')) return stmt;
       prepared += 1;
       const get = stmt.get.bind(stmt);
       stmt.get = (...args) => {
@@ -1127,7 +1153,7 @@ test('default-assignee-backfill - die Bestaetigung bindet jeden abgehakten Termi
     // Zwischen Bestaetigung und Abarbeitung von Hand bearbeitet: bleibt stehen.
     const { applyDefaultAssigneesToExisting } = await import('../server/services/sync-assignment.js');
     db.prepare('UPDATE calendar_events SET user_modified = 1 WHERE id = ?').run(ids.moved);
-    const written = await applyDefaultAssigneesToExisting(db, [{ eventId: ids.moved, userId: TOM.id, fromUserId: MARIA.id }]);
+    const written = await applyDefaultAssigneesToExisting(db, [{ eventId: ids.moved, userIds: [TOM.id], fromUserIds: [MARIA.id] }]);
     assert.equal(written, 0);
     assert.deepEqual(assignmentOf(ids.moved), { assignedTo: MARIA.id, users: [MARIA.id] }, 'die Hand gewinnt auch mitten im Lauf');
   } finally {
@@ -1137,10 +1163,10 @@ test('default-assignee-backfill - die Bestaetigung bindet jeden abgehakten Termi
 
 test('default-assignee-backfill - oeffnet kein privates Anhang-Dokument und macht keins family (#1358)', async () => {
   const { applyDefaultAssigneesToExisting, listBackfillCandidates } = await import('../server/services/sync-assignment.js');
-  const refId = db.prepare(`
-    INSERT INTO external_calendars (source, external_id, name, default_assignee_user_id)
-    VALUES ('caldav', 'https://dav.example/backfill-private/', 'Privat', ?)
-  `).run(TOM.id).lastInsertRowid;
+  const refId = withCalendarDefault(db.prepare(`
+    INSERT INTO external_calendars (source, external_id, name)
+    VALUES ('caldav', 'https://dav.example/backfill-private/', 'Privat')
+  `).run().lastInsertRowid, TOM.id);
   const doc = (visibility) => db.prepare(`
     INSERT INTO family_documents (name, original_name, mime_type, file_size, content_data, visibility, created_by)
     VALUES ('bf-privat', 'bf-privat.txt', 'text/plain', 1, 'x', ?, ?)
@@ -1171,10 +1197,10 @@ test('default-assignee-backfill - oeffnet kein privates Anhang-Dokument und mach
 
 test('default-assignee-backfill - arbeitet in Happen und kommt trotzdem bis zum Ende (#1154)', async () => {
   const { applyDefaultAssigneesToExisting } = await import('../server/services/sync-assignment.js');
-  const refId = db.prepare(`
-    INSERT INTO external_calendars (source, external_id, name, default_assignee_user_id)
-    VALUES ('caldav', 'https://dav.example/backfill-batch/', 'Batch', ?)
-  `).run(TOM.id).lastInsertRowid;
+  const refId = withCalendarDefault(db.prepare(`
+    INSERT INTO external_calendars (source, external_id, name)
+    VALUES ('caldav', 'https://dav.example/backfill-batch/', 'Batch')
+  `).run().lastInsertRowid, TOM.id);
   const ids = [1, 2, 3].map((n) => db.prepare(`
     INSERT INTO calendar_events (title, start_datetime, created_by, external_source, calendar_ref_id)
     VALUES (?, '2035-04-01T10:00', ?, 'caldav', ?)
@@ -1194,10 +1220,10 @@ test('default-assignee-backfill - arbeitet in Happen und kommt trotzdem bis zum 
 
 test('default-assignee-backfill - arbeitet nur die bestätigte Liste ab und prüft jede Zeile erneut (#1154)', async () => {
   const { applyDefaultAssigneesToExisting, listBackfillCandidates } = await import('../server/services/sync-assignment.js');
-  const refId = db.prepare(`
-    INSERT INTO external_calendars (source, external_id, name, default_assignee_user_id)
-    VALUES ('caldav', 'https://dav.example/backfill-snapshot/', 'Snapshot', ?)
-  `).run(TOM.id).lastInsertRowid;
+  const refId = withCalendarDefault(db.prepare(`
+    INSERT INTO external_calendars (source, external_id, name)
+    VALUES ('caldav', 'https://dav.example/backfill-snapshot/', 'Snapshot')
+  `).run().lastInsertRowid, TOM.id);
   const mk = (title) => db.prepare(`
     INSERT INTO calendar_events (title, start_datetime, created_by, external_source, calendar_ref_id)
     VALUES (?, '2035-05-01T10:00', ?, 'caldav', ?)
@@ -2351,7 +2377,7 @@ test('occurrence PUT distinguishes missing, ineligible and invalid original slot
   assert.equal(invalid.status, 400);
   assert.equal(invalid.body.code, 400);
   assert.equal(invalid.body.reason, 'invalid_recurrence_id');
-  assert.match(invalid.body.error, /Serientermin.*Datum/);
+  assert.match(invalid.body.error, /occurrence.*series/);
 });
 
 test('occurrence PUT refuses every provider-owned, imported, generated and outbound-targeted series', async () => {
@@ -2563,7 +2589,7 @@ test('restored Outlook write access never sends existing linked children through
     const event = (await call('GET', `/${childId}`)).body.data;
     await assert.rejects(requestCalendarOccurrenceDelete({ api, event, scope: 'this' }), { status: 400 });
     await assert.rejects(requestCalendarOccurrenceMutation({ api, event, scope: 'this', body: { title: 'Duplicate' } }),
-      (error) => error.status === 400 && /deaktiviere/i.test(error.data.error));
+      (error) => error.status === 400 && /switched off/i.test(error.data.error));
     assert.equal(writes.some((write) => write.method === 'post'), false);
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM calendar_events WHERE recurrence_parent_id = ?').get(seriesId).n, 1);
     const disabled = await call('PATCH', `/outlook/accounts/${accountId}/calendars`, {
@@ -2722,7 +2748,7 @@ test('following rejects an empty successor before attachment persistence', async
     assert.equal(response.status, 400);
     assert.equal(response.body.code, 400);
     assert.equal(response.body.reason, 'empty_successor_series');
-    assert.match(response.body.error, /Folgeserie.*Startdatum/);
+    assert.match(response.body.error, /successor series.*start date/);
     assert.equal(db.prepare('SELECT recurrence_rule FROM calendar_events WHERE id = ?')
       .get(seriesId).recurrence_rule, 'FREQ=DAILY');
     assert.equal(db.prepare(`
@@ -3425,7 +3451,10 @@ test('occurrence mutation routes reject schema-invalid values before persistence
         body,
       });
       assert.equal(response.status, 400, `${suffix || '/only'} ${JSON.stringify(body)}`);
-      assert.doesNotMatch(response.body.error, /\bmust\b|unknown user ID|duplicate user IDs/);
+      // Englisch fuer API-Clients, ohne Grund: das Formular laesst keinen dieser
+      // Werte durch, die App sagt ihren allgemeinen Satz (#1909).
+      assert.doesNotMatch(response.body.error, /[äöüß]|Gib |Wähle/);
+      assert.equal(response.body.reason, undefined, JSON.stringify(body));
       assert.equal(db.prepare(`
         SELECT COUNT(*) AS count FROM calendar_events WHERE recurrence_parent_id = ?
       `).get(seriesId).count, 0);
@@ -3571,7 +3600,7 @@ test('whole-series rule update requires the exact orphan count and detaches conf
   });
   assert.equal(first.status, 409);
   assert.deepEqual(first.body, {
-    error: 'Die Änderung benötigt eine aktuelle Bestätigung. Prüfe die Anzahl der betroffenen Einzelausnahmen und bestätige, dass sie als eigenständige Termine erhalten bleiben sollen.',
+    error: 'This change needs a current confirmation of the affected occurrence overrides (confirmed_orphan_count).',
     code: 409,
     conflict: 'calendar_override_orphans',
     orphaned_override_count: 1,
@@ -3795,7 +3824,7 @@ test('whole-series stale orphan confirmation is rejected after the count reaches
   assert.deepEqual(response, {
     status: 409,
     body: {
-      error: 'Die Änderung benötigt eine aktuelle Bestätigung. Prüfe die Anzahl der betroffenen Einzelausnahmen und bestätige, dass sie als eigenständige Termine erhalten bleiben sollen.',
+      error: 'This change needs a current confirmation of the affected occurrence overrides (confirmed_orphan_count).',
       code: 409,
       conflict: 'calendar_override_orphans',
       orphaned_override_count: 0,
@@ -3821,7 +3850,7 @@ test('first-slot following update returns and accepts the exact orphan confirmat
   assert.deepEqual(first, {
     status: 409,
     body: {
-      error: 'Die Änderung benötigt eine aktuelle Bestätigung. Prüfe die Anzahl der betroffenen Einzelausnahmen und bestätige, dass sie als eigenständige Termine erhalten bleiben sollen.',
+      error: 'This change needs a current confirmation of the affected occurrence overrides (confirmed_orphan_count).',
       code: 409,
       conflict: 'calendar_override_orphans',
       orphaned_override_count: 1,
@@ -5349,4 +5378,80 @@ test('POST /:id/reset: ein Termin, den die Person nicht sieht, ist 404 - nicht 4
 
   db.prepare('DELETE FROM calendar_events WHERE id IN (?, ?)').run(ics, priv);
   db.prepare('DELETE FROM ics_subscriptions WHERE id = ?').run(subId);
+});
+
+// #1909, Termine: der Server benennt jeden Fall, den ein Nutzer beim Speichern,
+// Zuruecksetzen oder Loeschen erreicht, mit einem `reason`; der Text in `error`
+// ist englisch und bleibt fuer API-Clients stehen.
+test('die Termin-Faelle tragen einen reason und einen englischen Text (#1909)', async () => {
+  const GERMAN = /[äöüß]|Termin|Kalender|Gib |Wähle|Serie |Fehler/;
+  const english = (res, label) => {
+    assert.equal(typeof res.body?.error, 'string', label);
+    assert.doesNotMatch(res.body.error, GERMAN, `${label}: ${res.body.error}`);
+  };
+  const missing = 999999;
+  for (const [method, route, body] of [
+    ['GET', `/${missing}`, undefined],
+    ['PUT', `/${missing}`, { title: 'Weg' }],
+    ['DELETE', `/${missing}`, undefined],
+    ['POST', `/${missing}/reset`, undefined],
+    ['POST', `/${missing}/exceptions`, { recurrence_id: '2035-03-10' }],
+  ]) {
+    const res = await call(method, route, { body });
+    assert.equal(res.status, 404, `${method} ${route}`);
+    assert.equal(res.body.reason, 'calendar_event_not_found', `${method} ${route}`);
+    english(res, `${method} ${route}`);
+  }
+  for (const [method, route] of [
+    ['DELETE', `/${missing}/occurrences/2035-03-10`],
+    ['DELETE', `/${missing}/occurrences/2035-03-10/following`],
+    ['PUT', `/${missing}/occurrences/2035-03-10`],
+  ]) {
+    const res = await call(method, route, { body: method === 'PUT' ? { title: 'Weg' } : undefined });
+    assert.equal(res.status, 404, `${method} ${route}`);
+    assert.equal(res.body.reason, 'calendar_series_not_found', `${method} ${route}`);
+    english(res, `${method} ${route}`);
+  }
+
+  // Der im Dialog gewaehlte Kalender ist inzwischen geloescht.
+  const single = insertEvent({ title: 'GRUND-EINZEL', start_datetime: '2035-03-10T09:00' });
+  const series = insertEvent({ title: 'GRUND-SERIE', start_datetime: '2035-03-01T09:00', recurrence_rule: 'FREQ=DAILY' });
+  try {
+    for (const [method, route, extra] of [
+      ['POST', '/', { title: 'Neu', start_datetime: '2035-03-10T09:00' }],
+      ['PUT', `/${single}`, {}],
+      ['PUT', `/${series}/occurrences/2035-03-05T09:00:00/following`, {}],
+    ]) {
+      const res = await call(method, route, { body: { ...extra, local_calendar_id: missing } });
+      assert.equal(res.status, 400, `${method} ${route}: ${JSON.stringify(res.body)}`);
+      assert.equal(res.body.reason, 'calendar_selected_calendar_not_found', `${method} ${route}`);
+      english(res, `${method} ${route}`);
+    }
+    // Eine Kennung, die keine Zahl ist, schickt nur ein Aufrufer: kein Fall.
+    const malformed = await call('POST', '/', { body: { title: 'Neu', start_datetime: '2035-03-10T09:00', local_calendar_id: 'x' } });
+    assert.equal(malformed.status, 400);
+    assert.equal(malformed.body.reason, undefined);
+    english(malformed, 'local_calendar_id x');
+    // Ein leerer Titel ebenso (das Formular prueft ihn selbst).
+    const untitled = await call('POST', '/', { body: { title: '', start_datetime: '2035-03-10T09:00' } });
+    assert.equal(untitled.status, 400);
+    assert.equal(untitled.body.reason, undefined);
+    english(untitled, 'title leer');
+
+    // Eine Wiederholung ohne ein Vorkommen (#960) und ein Ende vor dem Start (#1607).
+    for (const [method, route] of [['POST', '/'], ['PUT', `/${single}`]]) {
+      const none = await call(method, route, { body: {
+        title: 'Leer', start_datetime: '2035-01-15T09:00', recurrence_rule: 'FREQ=MONTHLY;BYMONTHDAY=-1;UNTIL=20350120',
+      } });
+      assert.equal(none.status, 400, `${method}: ${JSON.stringify(none.body)}`);
+      assert.equal(none.body.reason, 'calendar_series_no_occurrence', method);
+      const before = await call(method, route, { body: {
+        title: 'Vorher', start_datetime: '2035-01-15T09:00', recurrence_rule: 'FREQ=DAILY;UNTIL=20350110',
+      } });
+      assert.equal(before.status, 400, `${method}: ${JSON.stringify(before.body)}`);
+      assert.equal(before.body.reason, 'calendar_series_ends_before_start', method);
+    }
+  } finally {
+    db.prepare("DELETE FROM calendar_events WHERE title IN ('GRUND-EINZEL', 'GRUND-SERIE')").run();
+  }
 });

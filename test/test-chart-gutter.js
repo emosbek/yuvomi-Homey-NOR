@@ -308,6 +308,17 @@ test('watchChartGutters misst neu, wenn nur die Achse eines Diagramms getauscht 
   assert.equal(chart.host.props['--chart-label-width'], '90px');
 });
 
+test('watchChartGutters skips weather hourly charts (own PAD_L/PAD_R, no budget inset)', () => {
+  const { seen, options } = fakeObservers();
+  watchChartGutters(fakeBody(), options);
+  const chart = fakeChart([40]);
+  chart.svg.classList = { contains: (name) => name === 'weather-hourly-chart' };
+  insert(seen.added[0], fakeSection(chart.svg));
+  assert.deepEqual(chart.host.props, {});
+  assert.deepEqual(chart.host.classes, []);
+  assert.equal(seen.sized[0].targets.size, 0);
+});
+
 test('watchChartGutters laesst sich beenden und braucht keinen ResizeObserver', () => {
   const { seen, options } = fakeObservers();
   const stop = watchChartGutters(fakeBody(), options);

@@ -212,6 +212,9 @@ export function watchChartGutters(root, {
   };
   const fit = (svg) => {
     if (!svg.isConnected) return;
+    // Weather hourly panels keep short ticks inside their own PAD_L/PAD_R and
+    // must not inherit the budget/health --chart-inset minimum gutter.
+    if (svg.classList?.contains('weather-hourly-chart')) return;
     if (svg.getBoundingClientRect().width > 0) fitChartGutter(svg.parentElement);
     else waiting?.observe(svg);
   };

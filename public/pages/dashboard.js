@@ -17,6 +17,7 @@ import { buildWeekStrip } from '/utils/week-strip.js';
 import { relativeDateLabel, housekeepingSinceLabel } from '/utils/day-label.js';
 import { daysFromTodayText, dateText } from '/utils/date-format.js';
 import { esc, fmtLocation, renderMarkdownLight } from '/utils/html.js';
+import { errorSentence } from '/utils/friendly-error.js';
 import { initials } from '/utils/initials.js';
 // `todayKey` heisst hier schon ein Parameter (bzw. eine lokale Bindung), der den
 // Bezugstag traegt - der Import kommt deshalb unter eigenem Namen herein.
@@ -44,6 +45,7 @@ import {
   COCKPIT_COVERED_WIDGETS,
   nearestPreset, sameWidgetConfig, suggestGridHoleFill, rowFillSpans, columnFillSpans,
   dashboardQuery, dashboardQueryFiltersCounts, dashboardRequest, normalizeShoppingListSelection,
+  normalizeCalendarSelection,
   fetchPendingReminders, childDefaultWidgetConfig,
 } from '/utils/dashboard-widgets.js';
 import { EVENT_LIMIT_STEPS, EVENT_LIMIT_DEFAULT, clampEventLimit } from '/utils/dashboard-event-limit.js';
@@ -53,6 +55,7 @@ import {
   normalizeDashboardConfigWithExtensions,
   isExtensionWidget,
   getExtensionWidgetMeta,
+  getExtensionModules,
 } from '/utils/extension-widgets.js';
 import { widgetDisplayLabel, optionFieldLabel } from '/utils/extension-i18n.js';
 import { whoMark } from '/utils/seal-pair.js';
@@ -3426,15 +3429,17 @@ function renderFastingWidget(fasting) {
     </div></div>`;
 }
 
-function wireFastingWidget(container, rerender, refresh, fasting, signal) {
+// `refresh` ist der stille Abgleich der Seite: Starten und Beenden lassen die
+// Uebersicht stehen (DW-P1-2), statt sie ueber das Skelett neu aufzubauen.
+function wireFastingWidget(container, refresh, fasting, signal) {
   const root = container.querySelector('.fasting-widget');
   if (!root || !fasting) return () => {};
   root.querySelector('[data-fasting-widget-action]')?.addEventListener('click', async (event) => {
     const button = event.currentTarget;
     button.disabled = true;
     try {
-      if (fasting.active) await finishFasting(fasting.active, rerender, () => !signal.aborted);
-      else if (await startFasting()) { await rerender(); refocusAfterRender(); }
+      if (fasting.active) await finishFasting(fasting.active, refresh, () => !signal.aborted);
+      else if (await startFasting()) { await refresh(); refocusAfterRender(); }
     } catch (error) {
       if (root.isConnected) root.querySelector('[data-fasting-widget-error]').textContent = fastingError(error);
     } finally { button.disabled = false; }
@@ -3906,6 +3911,9 @@ function renderTodayRow(row, extraClass = '') {
   // Verdrahtung auseinander, bekommt eine Zeile einen href und trotzdem das
   // Modal.
   const opensModal = row.kind === 'task' && row.objectId != null;
+  // Kids Chores: tippen loest die Aufgabe ein (wie die Overview-Kachel), statt
+  // nur zur Modulseite zu navigieren. Ohne Schreibrecht bleibt der Link.
+  const completesKidsChore = row.kind === 'kids-chore' && row.objectId != null && row.canComplete === true;
   // Inset-Grouped-Zeile (Apple-Systemapp-Muster): das Markensiegel traegt
   // die Modulzugehoerigkeit (Herkunfts-Regel, Block 2), der Inhalt steht als
   // Titel in Textfarbe, das Modul-Label lebt als ruhiger Untertitel weiter
@@ -3925,7 +3933,7 @@ function renderTodayRow(row, extraClass = '') {
       ${time}
   `;
   const attrs = `class="today-cockpit-card today-cockpit-card--${esc(row.tone)}${extraClass}" data-route="${esc(row.route)}"${objectAttrs}`;
-  return opensModal
+  return (opensModal || completesKidsChore)
     ? `<button type="button" ${attrs}>${inner}</button>`
     : `<a href="${esc(row.route)}" ${attrs}>${inner}</a>`;
 }
@@ -4156,7 +4164,7 @@ function groupOverdueRows(rows) {
  *            shopping: object|null, coda: string|null}}
  */
 /** Der Blatt-Kontext - Cockpit, Wand und Kennzahlreihe fragen denselben. */
-function todaySheetContextFor(cfg, now, existing = [], { isDisplay = false } = {}) {
+function todaySheetContextFor(cfg, now, existing = [], { isDisplay = false, sheetKidsChores = true } = {}) {
   const todayKey = zonedDateKey(now);
   return todaySheetContext({
     todayKey,
@@ -4166,6 +4174,7 @@ function todaySheetContextFor(cfg, now, existing = [], { isDisplay = false } = {
     isModuleDisabled: (module) => Boolean(window.yuvomi?.isModuleDisabled(module)),
     existing,
     isDisplay,
+    sheetKidsChores,
   });
 }
 
@@ -4180,6 +4189,7 @@ function buildTodayCockpitModel(data, cfg = [], {
   groupOverdue = onPhoneStage(),
   isDisplay = false,
   viewer = dashboardViewer,
+  sheetKidsChores = true,
 } = {}) {
   // Kein Echo: ist das Modul-Widget einer Domäne sichtbar, entfallen ihre
   // Programm-Zeilen — jede Domäne hat genau eine Repräsentation (Cockpit ODER
@@ -4199,7 +4209,9 @@ function buildTodayCockpitModel(data, cfg = [], {
   // in utils/today-sheet.js - mit denselben drei Riegeln wie oben
   // (Modulschalter, Recht, Kein-Echo) und derselben Zeilenform. Cockpit und
   // Wand fragen beide hier; die Wand reicht nur keine Kachel-Konfiguration mit.
-  const sheetContext = todaySheetContextFor(cfg, now, program.rows, { isDisplay });
+  // Kids Chores: nur im Heute-Blatt (sheetKidsChores); die Wand hat ihre eigene
+  // Tafel hinter dem Admin-Schalter und wuerde sonst dieselben Zeilen doppelt.
+  const sheetContext = todaySheetContextFor(cfg, now, program.rows, { isDisplay, sheetKidsChores });
   const contributed = collectSourceRows(data, sheetContext);
   const programRows = groupOverdue ? groupOverdueRows(program.rows) : program.rows;
   const sheet = composeTodaySheet([...programRows, ...contributed.rows], { cap });
@@ -4782,6 +4794,37 @@ function rowFocusKeyOf(el) {
   return { selector, index, preventScroll: true };
 }
 
+/** Zeilen, die EIN Objekt nennen: Aufgabe, Termin, Notiz, Geburtstag. */
+const OBJECT_ROW_SELECTOR = '[data-task-id], [data-object-id], [data-route*="?open="]';
+
+/**
+ * Welche sichtbaren Objektzeilen der Flaeche das naechste Markup nicht mehr
+ * nennt (DW-P1-2) - die schliessen per `collapseRow`, bevor neu gezeichnet
+ * wird. Wiedererkannt wird eine Zeile am Schluessel, mit dem auch der Fokus
+ * den Neuaufbau ueberlebt (rowFocusKeyOf: Ziel, Objekt, Kachel). Gelesen wird
+ * das naechste Markup in einem traegen Dokument: dort laedt kein Bild und
+ * laeuft kein Skript. Schon ausgeblendete Zeilen (das Rueckgaengig-Fenster
+ * eines Loeschens) haben nichts mehr zu schliessen.
+ *
+ * @param {Element} shell     die Flaeche vor dem Neuaufbau
+ * @param {string} nextHtml   ihr Markup aus dem neuen Stand
+ * @returns {Element[]}
+ */
+function rowsLeaving(shell, nextHtml, doc = typeof document === 'undefined' ? null : document) {
+  if (!shell?.querySelectorAll || typeof doc?.implementation?.createHTMLDocument !== 'function') return [];
+  const hits = [...shell.querySelectorAll(OBJECT_ROW_SELECTOR)];
+  const rows = hits
+    .filter((el) => !hits.some((other) => other !== el && other.contains(el)))
+    .filter((el) => !el.hidden && el.getClientRects?.().length !== 0);
+  if (!rows.length) return [];
+  const next = doc.implementation.createHTMLDocument('');
+  next.body.insertAdjacentHTML('afterbegin', nextHtml);
+  return rows.filter((row) => {
+    const key = rowFocusKeyOf(row);
+    return Boolean(key) && !next.querySelector(key.selector);
+  });
+}
+
 /**
  * VOR dem Neuaufbau: wer hat den Fokus, und unter welchem Schluessel findet
  * man ihn danach wieder? Nur ein Element IN der Flaeche zaehlt - ein Dialog
@@ -5029,6 +5072,23 @@ async function loadShoppingLists(getLists = (path) => api.get(path)) {
   }
 }
 
+/**
+ * Die waehlbaren Kalender fuer den Optionen-Dialog der Kalender-Kachel (#2062):
+ * eigene, synchronisierte und Abos, unter dem Schluessel des Kalendermoduls.
+ * Sie stehen als `sources` neben den eigenen Kalendern von
+ * `/calendar/calendars`. Ohne Cache und mit `null` im Fehlerfall, wie die
+ * Einkaufslisten: ein Dialog ohne Katalog darf eine bestehende Auswahl nicht
+ * als "nichts gewaehlt" speichern.
+ */
+async function loadCalendarSources(getSources = (path) => api.get(path)) {
+  try {
+    const res = await getSources('/calendar/calendars');
+    return Array.isArray(res?.sources) ? res.sources : null;
+  } catch {
+    return null;
+  }
+}
+
 async function loadNoteCategories(getCategories = (path) => api.get(path)) {
   try {
     const res = await getCategories('/notes/categories');
@@ -5111,7 +5171,9 @@ async function openExtensionWidgetOptions(id, meta, current = {}) {
 }
 
 /** Der Optionen-Dialog eines Widgets. Aufloesen mit den neuen Optionen oder null. */
-async function openWidgetOptions(id, current = {}, { loadNotes = loadNoteCategories, loadLists = loadShoppingLists } = {}) {
+async function openWidgetOptions(id, current = {}, {
+  loadNotes = loadNoteCategories, loadLists = loadShoppingLists, loadCalendars = loadCalendarSources,
+} = {}) {
   const extMeta = getExtensionWidgetMeta(id);
   if (extMeta?.optionsSchema) return openExtensionWidgetOptions(id, extMeta, current);
 
@@ -5135,6 +5197,14 @@ async function openWidgetOptions(id, current = {}, { loadNotes = loadNoteCategor
   // Angehakt ist, was gespeichert UND noch da ist: eine geloeschte Liste hat
   // keine Zeile mehr und faellt mit dem naechsten Speichern aus der Auswahl.
   const pickedLists = new Set(normalizeShoppingListSelection(options.lists));
+  // Dieselbe Regel fuer die Kalender (#2062): angehakt ist, was gespeichert UND
+  // noch im Katalog ist; ein entfernter Kalender faellt mit dem Speichern weg.
+  const calendarChoices = id === 'calendar' ? await loadCalendars() : [];
+  if (calendarChoices === null) {
+    window.yuvomi?.showToast(t('dashboard.loadError'), 'danger');
+    return null;
+  }
+  const pickedCalendars = new Set(normalizeCalendarSelection(options.calendars));
 
   const body = id === 'calendar'
     ? `
@@ -5149,6 +5219,19 @@ async function openWidgetOptions(id, current = {}, { loadNotes = loadNoteCategor
           <span>${t('calendar.assignedToMe')}</span>
         </label>
       </fieldset>
+      ${/* Erst ab zwei Kalendern eine Wahl: mit einem gaebe es nichts zu
+            waehlen, und die Gruppe waere eine Zeile, die nichts aendert. */ ''}
+      ${calendarChoices.length > 1 ? `
+      <fieldset class="form-group widget-options__group">
+        <legend class="form-label">${esc(t('dashboard.optionCalendarCalendars'))}</legend>
+        <p class="widget-options__hint">${esc(t('dashboard.optionCalendarCalendarsHint'))}</p>
+        ${calendarChoices.map((source) => `
+        <label class="widget-options__choice">
+          <input type="checkbox" name="cal-calendar" value="${esc(String(source.key))}"
+                 ${pickedCalendars.has(source.key) ? 'checked' : ''}>
+          <span>${esc(source.name)}</span>
+        </label>`).join('')}
+      </fieldset>` : ''}
       <fieldset class="form-group widget-options__group">
         <legend class="form-label">${t('calendar.filtersLayers')}</legend>
         <p class="widget-options__hint">${t('dashboard.optionCalendarBirthdaysHint')}</p>
@@ -5250,6 +5333,11 @@ async function openWidgetOptions(id, current = {}, { loadNotes = loadNoteCategor
             // Dialog nicht gibt, kommt so auch nicht ins Layout.
             const limit = clampEventLimit(panel.querySelector('input[name="cal-limit"]:checked')?.value);
             if (limit !== EVENT_LIMIT_DEFAULT) next.limit = limit;
+            // Keine Auswahl heisst „alle Kalender" und wird nicht gespeichert (#2062).
+            const calendars = normalizeCalendarSelection(
+              [...panel.querySelectorAll('input[name="cal-calendar"]:checked')].map((el) => el.value),
+            );
+            if (calendars.length) next.calendars = calendars;
           } else if (id === 'waste') {
             const picked = [...panel.querySelectorAll('input[name="waste-type"]:checked')].map((el) => Number(el.value));
             // Dieselbe Regel wie bei den Aufgaben-Kategorien: keine Auswahl
@@ -6589,7 +6677,7 @@ function fitWallWho(root, data, { now = new Date(), reset = false, isDisplay = f
   if (!reset && !overflows()) return 0;
 
   // `allRows` haengt nicht am Deckel, der Timer spielt hier also keine Rolle.
-  const model = buildTodayCockpitModel(data, [], { cap: WALL_ROW_CAP, now, groupOverdue: false });
+  const model = buildTodayCockpitModel(data, [], { cap: WALL_ROW_CAP, now, groupOverdue: false, sheetKidsChores: false });
   const place = (step) => {
     const section = wall.querySelector('.wall__who');
     if (!section) return false;
@@ -6669,7 +6757,7 @@ function shedWallProgram(wall, data, overflows, { now = new Date(), isDisplay = 
   let shed = 0;
   while (rows > 2 && overflows()) {
     rows -= 1;
-    const model = buildTodayCockpitModel(data, [], { cap: rows, now, groupOverdue: false, isDisplay });
+    const model = buildTodayCockpitModel(data, [], { cap: rows, now, groupOverdue: false, isDisplay, sheetKidsChores: false });
     section.insertAdjacentHTML('afterend', renderWallProgram(model));
     const next = section.nextElementSibling;
     section.remove();
@@ -6733,6 +6821,50 @@ function createWallFit(win, signal) {
  * Einpassen stand zuerst als lose Zeile in `rebuildDashboard`, und kein Test
  * merkte, wenn sie fehlte.
  */
+const _wallExtensionModules = new Map();
+
+/** Drop-in modules that opt into the wall (Kids Chores showOnWall, …). */
+function syncWallAsideVisibility(host) {
+  const aside = host?.closest?.('.wall__aside');
+  if (!aside) return;
+  const hasVisibleChild = [...aside.children].some((el) => !el.hidden);
+  aside.hidden = !hasVisibleChild;
+}
+
+async function mountWallExtensionPanels(shell, { signal } = {}) {
+  const host = shell?.querySelector?.('#wall-extension-panels');
+  if (!host) return;
+  const modules = getExtensionModules();
+  const kids = modules.find((m) => m?.id === 'kids-chores' && m.enabled && m.status === 'enabled');
+  if (!kids) {
+    host.replaceChildren();
+    host.hidden = true;
+    syncWallAsideVisibility(host);
+    return;
+  }
+  const entry = '/api/v1/modules/assets/kids-chores/wall.js';
+  try {
+    let mod = _wallExtensionModules.get(entry);
+    if (!mod) {
+      mod = await import(/* webpackIgnore: true */ entry);
+      _wallExtensionModules.set(entry, mod);
+    }
+    if (typeof mod.renderWallPanel !== 'function') {
+      host.replaceChildren();
+      host.hidden = true;
+      syncWallAsideVisibility(host);
+      return;
+    }
+    await mod.renderWallPanel(host, { signal });
+    syncWallAsideVisibility(host);
+  } catch (err) {
+    console.error('[dashboard] Kids Chores wall panel failed', err);
+    host.replaceChildren();
+    host.hidden = true;
+    syncWallAsideVisibility(host);
+  }
+}
+
 function rebuildWall(container, shell, { data, weather, failed, updatedAt, rerender, signal, fit, screensaverEnabled = false, isDisplay = false }) {
   // Der stille Neuaufbau (Minutentakt, Timer) nimmt den Fokus mit, statt ihn
   // auf <body> fallen zu lassen - dasselbe Paar wie in rebuildDashboard.
@@ -6742,6 +6874,7 @@ function rebuildWall(container, shell, { data, weather, failed, updatedAt, reren
   if (globalThis.window?.lucide) globalThis.window.lucide.createIcons({ el: shell });
   wireWallSurface(container, rerender, signal);
   restoreFocusAfterRebuild(container, [keepFocus, takeWallFocusIntent('enter') ? '#wall-surface' : null]);
+  if (!failed) void mountWallExtensionPanels(shell, { signal });
   // Die Titel unter den Gesichtern folgen dem Platz: nach jedem Aufbau von der
   // obersten Stufe hinab.
   return fit.show(shell, data, { isDisplay });
@@ -6836,7 +6969,7 @@ function renderWallSurface(data, weather, { failed = false, loading = false, upd
   // weniger, und „+N weitere" zaehlt sie mit. Der Start und das Ende rufen
   // ohnehin `rerender()` (wall-timer.js), der Deckel folgt also von selbst.
   const cap = timer.display ? WALL_ROW_CAP - 1 : WALL_ROW_CAP;
-  const model = failed || loading ? null : buildTodayCockpitModel(data, [], { cap, now, groupOverdue: false, isDisplay });
+  const model = failed || loading ? null : buildTodayCockpitModel(data, [], { cap, now, groupOverdue: false, isDisplay, sheetKidsChores: false });
 
   let main;
   if (failed) {
@@ -6844,10 +6977,17 @@ function renderWallSurface(data, weather, { failed = false, loading = false, upd
   } else if (loading) {
     main = '<div class="wall__loading" aria-hidden="true"></div>';
   } else {
-    const aside = `${renderWallWho(data, model)}${renderWallWeather(weather)}`;
+    const who = renderWallWho(data, model);
+    const weatherHtml = renderWallWeather(weather);
+    // Panels host stays in the DOM (hidden) so drop-in modules can fill it
+    // after rebuild; the aside itself stays out when Who/Weather are empty
+    // until a panel unhides it (mountWallExtensionPanels).
+    const panels = '<div class="wall__extension-panels" id="wall-extension-panels" hidden></div>';
+    const asideBody = `${panels}${who}${weatherHtml}`;
+    const asideOpen = Boolean(who || weatherHtml);
     main = `
       ${renderWallProgram(model)}
-      ${aside ? `<div class="wall__aside">${aside}</div>` : ''}`;
+      <div class="wall__aside"${asideOpen ? '' : ' hidden'}>${asideBody}</div>`;
   }
 
   const stamp = updatedAt
@@ -7027,20 +7167,32 @@ function wireNewMenu(container, signal) {
     const item = event.target.closest?.('[data-new-route]');
     if (!item) return;
     item.closest('[popover]')?.hidePopover?.();
-    const route = item.dataset.newRoute;
-    await window.yuvomi.navigate(route);
-    const btnSelector = FAB_NEW_BTN[route];
-    if (btnSelector) document.querySelector(btnSelector)?.click();
+    await openNewTarget(item.dataset.newRoute);
   }, { signal });
 }
 
-// "Neu"-Button-Selector auf der jeweiligen Zielseite
+/**
+ * DER ANLEGEN-KNOPF DER ZIELSEITE, ALS ID. Pille und Speed-Dial wechseln ins
+ * Modul und klicken dort seinen FAB. Bis DW-P1-1 stand hier ein Selektor je
+ * Ziel, und `'#btn-new-task'` ueberlebte die Umbenennung in `fab-new-task`
+ * (#1483): "+ Neu > Aufgabe" landete wortlos in der Liste. Eine Id fuer
+ * `findPageFab()` statt eines Selektors - der FAB lebt nach `adoptPageFab()`
+ * in der Shell-Layer, und dort sucht ihn nur diese eine Stelle. Dass jede Id
+ * im Markup ihrer Zielseite steht, haelt `test:dashboard-clarity`.
+ */
 const FAB_NEW_BTN = {
-  '/tasks':    '#btn-new-task',
-  '/calendar': '#fab-new-event',
-  '/shopping': '#fab-new-item',
-  '/notes':    '#fab-new-note',
+  '/tasks':    'fab-new-task',
+  '/calendar': 'fab-new-event',
+  '/shopping': 'fab-new-item',
+  '/notes':    'fab-new-note',
 };
+
+/** Ins Modul wechseln und sein Anlegen-Blatt oeffnen - der eine Weg fuer Pille und Speed-Dial. */
+async function openNewTarget(route) {
+  await window.yuvomi.navigate(route);
+  const id = FAB_NEW_BTN[route];
+  if (id) findPageFab(id)?.click();
+}
 
 function renderFab() {
   // Am Desktop steht Anlegen als Pille im Kopf (renderNewPill).
@@ -7133,9 +7285,7 @@ function initFab(signal) {
   fabActions.querySelectorAll('[data-route]').forEach((el) => {
     const go = async () => {
       toggleFab(false);
-      await window.yuvomi.navigate(el.dataset.route);
-      const btnSelector = FAB_NEW_BTN[el.dataset.route];
-      if (btnSelector) document.querySelector(btnSelector)?.click();
+      await openNewTarget(el.dataset.route);
     };
     el.addEventListener('click', go);
     el.addEventListener('keydown', (e) => {
@@ -7179,18 +7329,40 @@ function initFab(signal) {
  * Das Modul wird nachgeladen statt mitgeladen: Es zieht das Aufgabenformular
  * mit sich, und dessen Gewicht gehört nicht in den Start der Startseite.
  *
- * `rerender` frischt die Kachel auf, aus der geöffnet wurde - der Nutzer
- * bleibt, wo er war, statt im Aufgabenmodul zu landen. `user` reist mit,
+ * `refresh` gleicht die Uebersicht still ab (refreshDashboardData, DW-P1-2):
+ * der Nutzer bleibt, wo er war - kein Skelett, kein Sprung nach oben, und
+ * keine Reise ins Aufgabenmodul. `user` reist mit,
  * weil an ihm haengt, wem seine eigenen Kommentare gehoeren und wer eine
  * gesperrte Aufgabe umschreiben darf.
  */
-async function openTaskFromOverview(taskId, container, rerender, user) {
+async function openTaskFromOverview(taskId, container, refresh, user) {
   try {
     const { openTaskById } = await import('/pages/tasks.js');
-    await openTaskById(taskId, { user, container, onChanged: rerender });
+    await openTaskById(taskId, { user, container, onChanged: refresh });
   } catch (err) {
     console.error('[Dashboard] Aufgabe konnte nicht geöffnet werden:', err);
-    window.yuvomi?.showToast(err.message ?? t('tasks.loadError'), 'danger');
+    window.yuvomi?.showToast(errorSentence(err, 'tasks.loadError'), 'danger');
+  }
+}
+
+/** Kids Chores from Today-at-a-glance: same complete path as the overview widget. */
+async function completeKidsChoreFromOverview(choreId, refresh) {
+  try {
+    const { choresApi } = await import('/api/v1/modules/assets/kids-chores/browser.js');
+    const next = await choresApi('/complete', {
+      method: 'POST',
+      body: { id: choreId },
+    });
+    if (next.goalReached) {
+      window.yuvomi?.showToast(t('extensions.kids-chores.page.goalReached'), 'success');
+    }
+    await refresh?.();
+  } catch (err) {
+    console.error('[Dashboard] Kids Chore konnte nicht abgeschlossen werden:', err);
+    window.yuvomi?.showToast(
+      err?.message || t('extensions.kids-chores.reason.invalid'),
+      'danger',
+    );
   }
 }
 
@@ -7229,12 +7401,12 @@ export function eventRowRemovedBy(link, scope) {
  * DER TERMIN OEFFNET UEBER DER UEBERSICHT (Critique R22, D3), wie die
  * Aufgabe daneben (openTaskFromOverview): das Blatt des Kalenders, die
  * Uebersicht bleibt stehen. Seit R22-F wird dort auch bearbeitet und
- * geloescht: danach zeichnet sich die Uebersicht neu (`rerender`), und
+ * geloescht: danach gleicht die Uebersicht still ab (`refresh`), und
  * waehrend der Rueckgaengig-Frist sind die Zeilen des Termins ausgeblendet.
  * Scheitert das Laden, fuehrt die Zeile wie bisher in den Kalender - ein
  * Fehler soll den Weg nicht verschliessen.
  */
-async function openEventFromOverview(link, anchor, { container = null, rerender = null, user = null } = {}) {
+async function openEventFromOverview(link, anchor, { container = null, refresh = null, user = null } = {}) {
   const onRemoving = (scope, removing) => {
     container?.querySelectorAll('[data-route]').forEach((row) => {
       if (eventRowRemovedBy(eventLinkOf(row.dataset.route), scope)) row.hidden = removing;
@@ -7242,7 +7414,7 @@ async function openEventFromOverview(link, anchor, { container = null, rerender 
   };
   try {
     const { openEventById } = await import('/pages/calendar.js');
-    await openEventById(link.id, { date: link.date, anchor, user, onChanged: rerender, onRemoving });
+    await openEventById(link.id, { date: link.date, anchor, user, onChanged: refresh, onRemoving });
   } catch (err) {
     console.error('[Dashboard] Termin konnte nicht geöffnet werden:', err);
     const params = new URLSearchParams({ open: link.id });
@@ -7255,7 +7427,7 @@ async function openEventFromOverview(link, anchor, { container = null, rerender 
 // Navigations-Links verdrahten
 // --------------------------------------------------------
 
-function wireLinks(container, rerender, { editing = false, user = null } = {}) {
+function wireLinks(container, refresh, { editing = false, user = null } = {}) {
   wireTodayMore(container);
   wireTodayOverdue(container);
   container.querySelectorAll('[data-route]').forEach((el) => {
@@ -7268,10 +7440,21 @@ function wireLinks(container, rerender, { editing = false, user = null } = {}) {
     // Essen-Zeile bewusst ohne Sonderweg: /meals öffnet die aktuelle Woche und
     // scrollt den Heute-Slot selbst in den Blick (meals.js, day-header--today).
     if (!editing && el.dataset.objectKind === 'task' && el.dataset.objectId) {
-      const show = () => openTaskFromOverview(el.dataset.objectId, container, rerender, user);
+      const show = () => openTaskFromOverview(el.dataset.objectId, container, refresh, user);
       el.addEventListener('click', show);
       el.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); show(); }
+      });
+      return;
+    }
+    if (!editing && el.dataset.objectKind === 'kids-chore' && el.dataset.objectId) {
+      const done = () => completeKidsChoreFromOverview(el.dataset.objectId, refresh);
+      el.addEventListener('click', (e) => {
+        e.preventDefault();
+        done();
+      });
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); done(); }
       });
       return;
     }
@@ -7279,7 +7462,7 @@ function wireLinks(container, rerender, { editing = false, user = null } = {}) {
     // Mittelklick auf einen Link behalten unten ihren neuen Tab.
     const eventLink = editing ? null : eventLinkOf(el.dataset.route);
     const go = eventLink
-      ? () => openEventFromOverview(eventLink, el, { container, rerender, user })
+      ? () => openEventFromOverview(eventLink, el, { container, refresh, user })
       : () => window.yuvomi.navigate(el.dataset.route);
     if (el.tagName === 'A') {
       el.addEventListener('click', (e) => {
@@ -7309,7 +7492,7 @@ function wireLinks(container, rerender, { editing = false, user = null } = {}) {
       // lag sonst in der Startkette jeder Uebersicht, geoeffnet wird er selten.
       el.addEventListener('click', async () => {
         const { openQuickLinksManager } = await import('/components/quick-links-manager.js');
-        openQuickLinksManager({ onChange: rerender });
+        openQuickLinksManager({ onChange: refresh });
       });
     });
   }
@@ -7320,7 +7503,7 @@ function wireLinks(container, rerender, { editing = false, user = null } = {}) {
   // nennt ein Objekt, also trifft der Klick dieses Objekt. Ein eigener Handler
   // daneben wäre ein zweiter Weg zur selben Handlung.
   container.querySelectorAll('.task-item[data-task-id], .countdown-item[data-task-id]').forEach((el) => {
-    const show = () => openTaskFromOverview(el.dataset.taskId, container, rerender, user);
+    const show = () => openTaskFromOverview(el.dataset.taskId, container, refresh, user);
     el.addEventListener('click', show);
     el.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); show(); }
@@ -7566,6 +7749,7 @@ export async function render(container, { user, signal: routeSignal = null } = {
     user, t, api, wall: wallMode,
     before: container.querySelector('#dashboard-shell'),
     toast: (message, type) => window.yuvomi?.showToast(message, type),
+    sentence: (error) => errorSentence(error, 'settings.preferenceSaveFailed'),
   });
   // ERSTE SCHRITTE (R23 D14): nach dem Rundgang drei Wege - Familie, Module,
   // Region - an derselben Stelle wie der Zonen-Hinweis, vom ersten Bild an
@@ -7746,7 +7930,7 @@ export async function render(container, { user, signal: routeSignal = null } = {
       markLoaded(requestDay);
     }
   } catch (err) {
-    console.error('[Dashboard] Ladefehler:', err.message, 'Status:', err.status ?? 'network');
+    console.error('[Dashboard] Ladefehler:', err, 'Status:', err.status ?? 'network');
     loadFailed = true;
     loadErrorStatus = Number.isFinite(err?.status) ? err.status : null;
   }
@@ -7766,7 +7950,7 @@ export async function render(container, { user, signal: routeSignal = null } = {
       ]);
       data.cycle = { periods: periodsRes.data || [], settings: settingsRes.data || {} };
     } catch (err) {
-      console.error('[Dashboard] Zyklus-Slice Ladefehler:', err?.message);
+      console.error('[Dashboard] Zyklus-Slice Ladefehler:', err);
       data.cycle = null;
     }
   }
@@ -7782,7 +7966,7 @@ export async function render(container, { user, signal: routeSignal = null } = {
     try {
       data.schedule = await loadScheduleSlice(householdToday());
     } catch (err) {
-      console.error('[Dashboard] Schedule-Slice Ladefehler:', err?.message);
+      console.error('[Dashboard] Schedule-Slice Ladefehler:', err);
       data.schedule = null;
     }
   }
@@ -7811,8 +7995,27 @@ export async function render(container, { user, signal: routeSignal = null } = {
         needsRefresh: (sourcesRes.data ?? []).some((s) => s.needs_refresh),
       };
     } catch (err) {
-      console.error('[Dashboard] Waste-Slice Ladefehler:', err?.message);
+      console.error('[Dashboard] Waste-Slice Ladefehler:', err);
       data.waste = null;
+    }
+  }
+
+  // Kids Chores: sidecar-API, nicht /dashboard. Fuellt das Heute-Blatt und die
+  // Wand-Tafel; ohne Modul oder ohne Recht bleibt der Slice null.
+  async function ensureKidsChoresSlice() {
+    if (data.kidsChores !== undefined) return;
+    const modules = getExtensionModules();
+    const enabled = modules.some((m) => m?.id === 'kids-chores' && m.enabled && m.status === 'enabled');
+    if (!enabled || window.yuvomi?.isModuleDisabled('kids-chores')) {
+      data.kidsChores = null;
+      return;
+    }
+    try {
+      const { choresApi } = await import('/api/v1/modules/assets/kids-chores/browser.js');
+      data.kidsChores = await choresApi('/today');
+    } catch (err) {
+      console.error('[Dashboard] Kids Chores-Slice Ladefehler:', err);
+      data.kidsChores = null;
     }
   }
 
@@ -7826,6 +8029,9 @@ export async function render(container, { user, signal: routeSignal = null } = {
   }
   if (!loadFailed && widgetConfig.some((w) => w.id === 'waste' && w.visible)) {
     await ensureWasteSlice();
+  }
+  if (!loadFailed) {
+    await ensureKidsChoresSlice();
   }
   // Auch die Nachlade-Runden koennen von einem Verlassen oder Neuaufbau
   // ueberholt worden sein (#977).
@@ -8387,6 +8593,34 @@ export async function render(container, { user, signal: routeSignal = null } = {
     if (signal.aborted || wallMode || loadFailed || isCustomizing) return;
     if (crossed || measurePhoneProgram(container.querySelector('#dashboard-shell'))) rebuildDashboard(widgetConfig);
   });
+  const refreshAfterSheet = () => refreshDashboardData();
+  // Die Lage vor dem Ausklappen gehender Zeilen, fuer den naechsten Aufbau.
+  let quietScrollTop = null;
+  /** Das Markup der Flaeche aus dem aktuellen Stand - fuer den Aufbau und fuer
+   *  den Blick voraus, welche Zeilen der stille Abgleich mitnimmt. */
+  function dashboardShellHtml(cfg) {
+    // Signature-„Heute"-Masthead: Begrüßung und Glance-Cockpit teilen sich EIN
+    // erhöhtes Material-Band (statt zweier gestapelter gerahmter Kästen). Die
+    // inneren Sections sind entrahmt; das Band trägt Rahmen/Schatten/Tönung.
+    // Fehlt das Cockpit (alle Domänen als Widgets sichtbar → kein Glance-Inhalt),
+    // kollabiert das Band per --slim auf eine schlanke Gruß-Leiste statt ein
+    // großes leeres Rechteck zu zeigen (Critique R3 P1).
+    const cockpitHtml = (glanceVisible || isCustomizing) ? renderTodayCockpit(data, cfg, isCustomizing) : '';
+    const mastheadSlim = cockpitHtml ? '' : ' dashboard-masthead--slim';
+    // Kein Wetter-Echo: die Masthead-Zeile spricht nur, wenn die Wetter-Karte
+    // nicht ohnehin im Raster sichtbar ist (Opt-in fürs Wandtablet).
+    // Eine nicht verfuegbare Karte steht nicht im Raster, spricht also auch
+    // nicht fuer die Zeile.
+    const weatherCardShown = cfg.some((w) => w.id === 'weather' && w.visible) && isWidgetModuleEnabled('weather');
+    return `
+      <section class="dashboard-masthead dashboard-masthead--${greetingPeriod()}${mastheadSlim}">
+        ${renderDashboardOverview(user, isCustomizing, weather, { followsDefault, canPublish, weatherCard: weatherCardShown })}
+        ${cockpitHtml}
+      </section>
+      ${renderDashboardLayout(cfg, data, weather, currency, { editing: isCustomizing, visibleMealTypes, glanceHidden: !glanceVisible, familyManage: familyManageHref(user) })}
+      ${isCustomizing ? renderCustomizeFootnote({ followsDefault, canPublish }) : ''}
+    `;
+  }
   function rebuildDashboard(cfg) {
     // Der eine Engpass fuer jeden verspaeteten Neuaufbau (#977): eine Antwort,
     // die nach dem Verlassen der Seite oder nach dem naechsten render()
@@ -8413,19 +8647,7 @@ export async function render(container, { user, signal: routeSignal = null } = {
       container.querySelector('#dashboard-retry')?.addEventListener('click', rerender, { signal: signal });
       return;
     }
-    // Signature-„Heute"-Masthead: Begrüßung und Glance-Cockpit teilen sich EIN
-    // erhöhtes Material-Band (statt zweier gestapelter gerahmter Kästen). Die
-    // inneren Sections sind entrahmt; das Band trägt Rahmen/Schatten/Tönung.
-    // Fehlt das Cockpit (alle Domänen als Widgets sichtbar → kein Glance-Inhalt),
-    // kollabiert das Band per --slim auf eine schlanke Gruß-Leiste statt ein
-    // großes leeres Rechteck zu zeigen (Critique R3 P1).
-    const cockpitHtml = (glanceVisible || isCustomizing) ? renderTodayCockpit(data, cfg, isCustomizing) : '';
-    const mastheadSlim = cockpitHtml ? '' : ' dashboard-masthead--slim';
-    // Kein Wetter-Echo: die Masthead-Zeile spricht nur, wenn die Wetter-Karte
-    // nicht ohnehin im Raster sichtbar ist (Opt-in fürs Wandtablet).
-    // Eine nicht verfuegbare Karte steht nicht im Raster, spricht also auch
-    // nicht fuer die Zeile.
-    const weatherCardShown = cfg.some((w) => w.id === 'weather' && w.visible) && isWidgetModuleEnabled('weather');
+    const html = dashboardShellHtml(cfg);
     // Wer hatte den Fokus? Nach dem setHtml gibt es sein Element nicht mehr
     // (captureRebuildFocus / restoreFocusAfterRebuild).
     const { key: keepFocus, had: hadFocus } = captureRebuildFocus(shell, document.activeElement, document.body);
@@ -8454,15 +8676,19 @@ export async function render(container, { user, signal: routeSignal = null } = {
     // still, und unter der Seitenblende ist die Blende schon das Einblenden.
     const fromSkeleton = Boolean(shell.querySelector('.widget-skeleton'))
       && !document.documentElement.classList.contains('page-swapping');
+    // DER SCROLL BLEIBT (DW-P1-2). Ein stiller Neuaufbau tauscht die ganze
+    // Flaeche, und die Scroll-Verankerung des Browsers hat danach keinen
+    // Anker mehr: gemessen 390x844 nach dem Erledigen 400 -> 384 (die Zeile,
+    // die oberhalb der Sicht ausklappt, zog die Lage mit). Gemerkt wird die
+    // Lage vor dem Ausklappen (`quietScrollTop`, refreshDashboardData) bzw. hier,
+    // und am Ende des Aufbaus - nach Icons und Messungen - wiederhergestellt.
+    // Nicht beim Anpassen (dort gleitet das Raster selbst, playGridShift) und
+    // nicht nach dem Skelett, das keine Lage hatte.
+    const scroller = fromSkeleton || isCustomizing || modeChanged ? null : shell.closest?.('.app-content') ?? null;
+    const keptScroll = scroller ? (quietScrollTop ?? scroller.scrollTop) : 0;
+    quietScrollTop = null;
     swapContent(shell, () => {
-      setHtml(shell, `
-      <section class="dashboard-masthead dashboard-masthead--${greetingPeriod()}${mastheadSlim}">
-        ${renderDashboardOverview(user, isCustomizing, weather, { followsDefault, canPublish, weatherCard: weatherCardShown })}
-        ${cockpitHtml}
-      </section>
-      ${renderDashboardLayout(cfg, data, weather, currency, { editing: isCustomizing, visibleMealTypes, glanceHidden: !glanceVisible, familyManage: familyManageHref(user) })}
-      ${isCustomizing ? renderCustomizeFootnote({ followsDefault, canPublish }) : ''}
-    `);
+      setHtml(shell, html);
       // Telefon: das Blatt fuellt den ersten Schirm (D5). Gemessen im selben
       // Task wie das Zeichnen, also bevor der Browser ein Bild davon malt.
       const fitted = measurePhoneProgram(shell);
@@ -8473,8 +8699,12 @@ export async function render(container, { user, signal: routeSignal = null } = {
         if (tighter) replaceProgramSheet(shell, renderTodayCockpit(data, cfg, isCustomizing, { cap: tighter }));
       }
     }, { animate: fromSkeleton });
-    wireLinks(container, rerender, { editing: isCustomizing, user });
-    disposeFastingClock = wireFastingWidget(container, rerender, refreshDashboardData, data.fasting, signal);
+    // Was ein Blatt UEBER der Uebersicht aendert (Erledigen, Bearbeiten,
+    // Loeschen, Fasten), gleicht still ab: kein Skelett, Scroll und Fokus
+    // bleiben (refreshDashboardData). Das volle render() gehoert dem Aufbau.
+    // Ohne Argumente: was ein Blatt seinem `onChanged` mitgibt, ist keine Option.
+    wireLinks(container, refreshAfterSheet, { editing: isCustomizing, user });
+    disposeFastingClock = wireFastingWidget(container, refreshAfterSheet, data.fasting, signal);
     // Retry einer isolierten Widget-Fehlerkachel: da /dashboard aggregiert lädt,
     // ist „erneut versuchen" ein voller Neuaufbau (wie der Page-Level-Retry).
     container.querySelectorAll('[data-widget-retry]').forEach((btn) =>
@@ -8562,6 +8792,7 @@ export async function render(container, { user, signal: routeSignal = null } = {
     focusAfterRebuild = null;
     playTileFlip(shell, tileRectsBefore);
     playGridShift(shell, gridTopBefore);
+    if (scroller && scroller.scrollTop !== keptScroll) scroller.scrollTop = keptScroll;
   }
 
   rebuildDashboard(widgetConfig);
@@ -8603,16 +8834,49 @@ export async function render(container, { user, signal: routeSignal = null } = {
   // Tab), bewusst ohne Skeleton (das gehört dem Erstaufbau) und still bei
   // Fehlern, wie der Wetter-Timer. Während „Anpassen" wird nicht neu gebaut -
   // ein Rebuild würde den Bearbeitungszustand wegwerfen.
-  let refreshInFlight = false;
+  //
+  // SEIT DW-P1-2 (Critique 26.10.) auch der Weg nach einer Aktion in einem
+  // Blatt ueber der Uebersicht. Dort stand `render()`: Skelett ueber dem
+  // Inhalt, die Seite schrumpfte auf Bildschirmhoehe und der Scroll fiel auf
+  // 0 (gemessen 1596 -> 900 px, 400 -> 0, 120-250 ms Skelett) - genau dort,
+  // wo das Blatt versprach, die Uebersicht bleibe stehen (R22 D3). Die
+  // Zeile, die mit dem neuen Stand geht, schliesst vorher sichtbar
+  // (closeLeavingRows).
+  //
+  // Laeuft schon eine Nachfrage, kann ihre Antwort aelter sein als der
+  // Schreibvorgang, der die naechste ausloest: dann faehrt sie danach ein
+  // zweites Mal, statt den Aufruf zu verschlucken.
+  let refreshInFlight = null;
+  let refreshAgain = false;
+  // Was der neue Stand nicht mehr nennt, klappt aus, bevor die Flaeche ohne
+  // es neu entsteht (utils/list-motion.js: collapseRow VOR dem Neuzeichnen).
+  // Nachgeladen, nicht im Startgraphen: gebraucht wird es erst nach einem
+  // Schreibvorgang (test:startup-preload).
+  async function closeLeavingRows(cfg) {
+    const shell = container.querySelector('#dashboard-shell');
+    if (!shell || wallMode) return;
+    const leaving = rowsLeaving(shell, dashboardShellHtml(cfg));
+    if (!leaving.length) return;
+    const { collapseRow } = await import('/utils/list-motion.js');
+    await Promise.all(leaving.map((row) => collapseRow(row)));
+  }
   // `onlyIfChanged`: die stille Nachfrage nach einem Aufbau aus dem gemerkten
   // Stand (`_overviewMemo`) - gleiche Antwort, kein Neuaufbau.
   async function refreshDashboardData({ onlyIfChanged = false } = {}) {
-    if (isCustomizing || loadFailed || refreshInFlight) return;
-    refreshInFlight = true;
+    if (isCustomizing || loadFailed) return;
+    if (refreshInFlight) { refreshAgain = true; return refreshInFlight; }
+    let settled;
+    refreshInFlight = new Promise((resolve) => { settled = resolve; });
     const before = onlyIfChanged ? overviewSignature(data) : null;
     try {
       const requestDay = householdToday();
-      const fresh = await api.get(overviewRequest(dashboardQuery(widgetConfig)));
+      // Die Erinnerungen haengen an nichts davon: sie laufen neben der
+      // Uebersicht, nicht danach - nach einer Blatt-Aktion wartet die Flaeche
+      // sonst eine Runde laenger auf ihren neuen Stand.
+      const [fresh, pendingReminders] = await Promise.all([
+        api.get(overviewRequest(dashboardQuery(widgetConfig))),
+        loadPendingReminders(overviewRequest),
+      ]);
       if (signal.aborted) return;
       localizeEventLists(fresh);
       // DIE EIGENEN SLICES WERDEN NEU GEHOLT, NICHT WEITERGEREICHT. /dashboard
@@ -8647,15 +8911,36 @@ export async function render(container, { user, signal: routeSignal = null } = {
         if (signal.aborted) return;
       }
       fresh.waste = data.waste;
-      fresh.pendingReminders = await loadPendingReminders(overviewRequest);
+      data.kidsChores = undefined;
+      await ensureKidsChoresSlice();
       if (signal.aborted) return;
+      fresh.kidsChores = data.kidsChores;
+      fresh.pendingReminders = pendingReminders;
       const unchanged = before !== null && overviewSignature(fresh) === before;
       data = fresh;
+      // Wie der Aufbau: ob die Countdown-Kachel steht, sagt der neue Stand -
+      // ein im Blatt angelegter Countdown bringt sie mit (Review zu #2314).
+      setCountdownAvailability(data?.countdowns);
       markLoaded(requestDay);
       rememberOverview();
-      if (!unchanged) rebuildDashboard(widgetConfig);
+      if (unchanged) return;
+      const scrollTop = container.querySelector('#dashboard-shell')?.closest?.('.app-content')?.scrollTop ?? null;
+      await closeLeavingRows(widgetConfig);
+      // Waehrenddessen verlassen oder ins Anpassen gewechselt: dort hat der
+      // eigene Aufbau den neuen Stand schon gezeichnet.
+      if (signal.aborted || isCustomizing) return;
+      quietScrollTop = scrollTop;
+      rebuildDashboard(widgetConfig);
     } catch { /* Hintergrund-Refresh: bewusst still */ }
-    finally { refreshInFlight = false; }
+    finally {
+      refreshInFlight = null;
+      // Wer waehrenddessen fragte, wartet auf den Nachlauf mit.
+      if (refreshAgain && !signal.aborted) {
+        refreshAgain = false;
+        await refreshDashboardData();
+      }
+      settled();
+    }
   }
   const refreshTimerId = setInterval(() => {
     if (!document.hidden) refreshDashboardData();
@@ -8729,8 +9014,14 @@ export async function render(container, { user, signal: routeSignal = null } = {
         });
         const res = await api.get(`/weather?lang=${encodeURIComponent(getLocale())}`).catch(() => ({ data: null }));
         if (signal.aborted) return;
+        // GLEICHE ANTWORT, KEIN NEUAUFBAU (DW-P3-13): der Takt baute alle 30
+        // Minuten die ganze Flaeche neu, auch wenn der Anbieter dasselbe
+        // sagte - anders als der stille Abgleich mit `onlyIfChanged`. Der Tag
+        // gehoert zum Abdruck: um Mitternacht rueckt die Heute-Marke der Vorschau.
+        const shown = overviewSignature({ weather, available: weatherAvailable, day: householdToday() });
         weather = res.data ?? null;
         setWeatherAvailability(res, weatherPrefs);
+        if (overviewSignature({ weather, available: weatherAvailable, day: householdToday() }) === shown) return;
         rebuildDashboard(widgetConfig);
       } catch { /* Hintergrund-Timer: bewusst still — der Nutzer hat nichts
                    angestoßen, ein Toast alle 30 Min wäre reiner Lärm. */ }
@@ -8837,7 +9128,7 @@ export const __test = {
   usableOverviewMemo, overviewMemoKey, overviewSignature, watchOverviewWrites,
   getOverviewMemo: () => _overviewMemo,
   setOverviewMemo: (memo) => { _overviewMemo = memo; },
-  childDefaultFor, taskForOthersOnly, customizeLeaveAllowed, setCustomizeFabHidden, renderCalendarWidget, renderRewardsWidget, loadScheduleSlice, renderUrgentTasks, renderUpcomingEvents, buildTodayHighlights, buildTodayProgram, buildTodayCockpitModel, renderTodayCockpit, renderPinnedNotes, renderScheduleWidget, renderWasteWidget, renderPantryWidget, renderFamilyWidget, formatDueDate, normalizeVisibleMealTypes, renderTodayMeals, calendarEventRoute, eventOccurrenceDateKey, eventStartDate, renderWallSurface, renderWallWho, planWallWhoLines, fitWallWho, createWallFit, rebuildWall, shedWallProgram, WALL_WHO_LADDER, renderDashboardOverview, selectMetricTiles, METRIC_TILE_ORDER, PROGRAM_ROW_CAP, WALL_ROW_CAP, weatherToneKey, weatherMotionAttr, weatherTempBand, weatherSpanModel, weatherDayLabel, weatherTodayRange, renderWeatherWidget, renderWeatherUnavailable, weatherAvailableFrom, renderWallWeather, relativeDateLabel, listRowCap, calendarRowCap, calendarListRowsOf, renderDashboardSkeleton, openWidgetOptions, renderFab, widgetHeader, renderDashboardLayout, renderMetricTiles, renderGridHint, captureTileRects, playTileFlip, playGridShift, familyManageHref, customizeHasChanges, focusKeyOf, captureRebuildFocus, restoreFocusAfterRebuild, shoppingSoleListRoute, todayMoreRoute, wireTodayMore, wireTodayOverdue, renderWidgetSizeMenu, renderNewPill, renderCustomizeFootnote, applyRowFill, programRowsThatFit, PROGRAM_ROW_CAP_PHONE, createPhoneProgramFit };
+  childDefaultFor, taskForOthersOnly, customizeLeaveAllowed, setCustomizeFabHidden, renderCalendarWidget, renderRewardsWidget, loadScheduleSlice, renderUrgentTasks, renderUpcomingEvents, buildTodayHighlights, buildTodayProgram, buildTodayCockpitModel, renderTodayCockpit, renderPinnedNotes, renderScheduleWidget, renderWasteWidget, renderPantryWidget, renderFamilyWidget, formatDueDate, normalizeVisibleMealTypes, renderTodayMeals, calendarEventRoute, eventOccurrenceDateKey, eventStartDate, renderWallSurface, renderWallWho, planWallWhoLines, fitWallWho, createWallFit, rebuildWall, shedWallProgram, WALL_WHO_LADDER, renderDashboardOverview, selectMetricTiles, METRIC_TILE_ORDER, PROGRAM_ROW_CAP, WALL_ROW_CAP, weatherToneKey, weatherMotionAttr, weatherTempBand, weatherSpanModel, weatherDayLabel, weatherTodayRange, renderWeatherWidget, renderWeatherUnavailable, weatherAvailableFrom, renderWallWeather, relativeDateLabel, listRowCap, calendarRowCap, calendarListRowsOf, renderDashboardSkeleton, openWidgetOptions, renderFab, widgetHeader, renderDashboardLayout, renderMetricTiles, renderGridHint, captureTileRects, playTileFlip, playGridShift, familyManageHref, customizeHasChanges, focusKeyOf, captureRebuildFocus, restoreFocusAfterRebuild, shoppingSoleListRoute, todayMoreRoute, wireTodayMore, wireTodayOverdue, renderWidgetSizeMenu, renderNewPill, FAB_ACTIONS, FAB_NEW_BTN, wireNewMenu, initFab, renderCustomizeFootnote, applyRowFill, programRowsThatFit, PROGRAM_ROW_CAP_PHONE, createPhoneProgramFit };
 
 // `signal` ist der Controller des Aufbaus, der die Wetterkarte gezeichnet hat
 // (#976/#977). Vorher las diese Funktion das Modul-Feld `_fabController` -
@@ -8988,4 +9279,7 @@ Object.assign(__test, { renderUpcomingEvents, renderShoppingLists, renderShoppin
 
 // Test-Tor fuer die Uebersichts-Bugs vom 2026-09-29 (#1449, #1451-#1457).
 Object.assign(__test, { renderBudgetWidget });
+
+// Test-Tor fuer die Kalender-Auswahl der Kalender-Kachel (#2062).
+Object.assign(__test, { loadCalendarSources });
 Object.assign(__test, { renderCountdowns, renderHousekeepingWidget, renderCycleWidget, todayFingerprint });

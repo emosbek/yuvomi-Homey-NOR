@@ -18,6 +18,7 @@
 
 import http from 'node:http';
 import https from 'node:https';
+import { iconIdFromObj } from '../pin-style.js';
 import { inspectAddress } from './guard.js';
 
 const NETWORK_DETAILS = new Set(['timeout', 'noroute', 'refused']);
@@ -40,10 +41,10 @@ export class HomeyRequestError extends Error {
   }
 }
 
-function requestOnce({ target, token, method, path, body, auth }) {
+function requestOnce({ target, token, method, path, body, auth, accept = 'application/json', raw = false, maxBytes = 256_000 }) {
   const payload = body === undefined ? null : Buffer.from(JSON.stringify(body));
   const headers = {
-    Accept: 'application/json',
+    Accept: accept,
     Host: new URL(target.origin).host,
   };
   if (auth !== false && token) headers.Authorization = `Bearer ${token}`;
@@ -69,13 +70,24 @@ function requestOnce({ target, token, method, path, body, auth }) {
       timeout: 8000,
     }, (res) => {
       const chunks = [];
-      res.on('data', (chunk) => chunks.push(chunk));
+      let size = 0;
+      res.on('data', (chunk) => {
+        size += chunk.length;
+        if (size > maxBytes) {
+          res.destroy();
+          fail('timeout');
+          return;
+        }
+        chunks.push(chunk);
+      });
       res.on('end', () => {
         if (settled) return;
         settled = true;
+        const buffer = Buffer.concat(chunks);
         resolve({
           status: res.statusCode || 0,
-          body: Buffer.concat(chunks).toString('utf8'),
+          body: raw ? buffer : buffer.toString('utf8'),
+          contentType: String(res.headers['content-type'] || ''),
         });
       });
     });
@@ -184,6 +196,7 @@ function capabilityList(device) {
       values,
       setable,
       role: setable ? 'control' : 'sense',
+      iconId: iconIdFromObj(cap.iconObj),
     };
   }).filter((cap) => cap && cap.id && cap.id.length <= 120)
     .sort((a, b) => capabilityRank(a.id, a.setable) - capabilityRank(b.id, b.setable)
@@ -201,6 +214,7 @@ export function normalizeDevices(data) {
       deviceClass: typeof device.class === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(device.class)
         ? device.class.toLowerCase()
         : '',
+      iconId: iconIdFromObj(device.iconObj),
       capabilities: capabilityList(device),
     }))
     .filter((device) => device.capabilities.length > 0);
@@ -372,6 +386,43 @@ export function createHomeyClient({ allowLoopback = false, lookupImpl } = {}) {
     webhook(address, event, tag) {
       const query = `event=${encodeURIComponent(event)}${tag ? `&tag=${encodeURIComponent(tag)}` : ''}`;
       return targetFor(address).then((target) => call(target, null, `/webhook?${query}`, { auth: false }));
+    },
+    async icon(address, token, iconId) {
+      const id = String(iconId || '');
+      if (!/^[A-Za-z0-9_-]{1,80}$/.test(id)) throw new HomeyRequestError(404);
+      const target = await targetFor(address);
+      let res;
+      try {
+        res = await requestOnce({
+          target,
+          token,
+          method: 'GET',
+          path: `/api/icon/${encodeURIComponent(id)}`,
+          accept: 'image/svg+xml, image/*, */*',
+          raw: true,
+          maxBytes: 128_000,
+        });
+      } catch (err) {
+        if (err instanceof HomeyRequestError) throw err;
+        throw new HomeyRequestError(0);
+      }
+      if (res.status < 200 || res.status >= 300) throw new HomeyRequestError(res.status);
+      const type = String(res.contentType || '').split(';')[0].trim().toLowerCase();
+      const allowed = type === 'image/svg+xml'
+        || type === 'image/png'
+        || type === 'image/jpeg'
+        || type === 'image/jpg'
+        || type === 'image/webp'
+        || type === 'image/gif'
+        || type === 'application/octet-stream'
+        || type === '';
+      if (!allowed) throw new HomeyRequestError(502);
+      return {
+        body: res.body,
+        contentType: type && type !== 'application/octet-stream'
+          ? res.contentType
+          : 'image/svg+xml',
+      };
     },
   };
 }

@@ -6,7 +6,14 @@ name: yuvomi
 
 services:
   yuvomi:
-    image: ghcr.io/ulsklyc/yuvomi:latest
+    # Build from this checkout. Pulling ghcr.io/ulsklyc/yuvomi:latest only runs
+    # upstream Yuvomi — MET Norway, the hourly chart and Homey-NOR dashboard
+    # fixes live in server/ and public/ here, not in that image. modules/ alone
+    # is mounted for Homey; the rest of the app must come from this build.
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: yuvomi-homey-nor:local
     restart: unless-stopped
     ports:
       - "127.0.0.1:3001:3000"
@@ -14,6 +21,8 @@ services:
       - ../../.env
     environment:
       NODE_ENV: production
+      # Keep the app on 3000 inside the container even if .env has a host PORT.
+      PORT: "3000"
       DB_PATH: /data/yuvomi.db
       BACKUP_DIR: /backups
       MODULES_DIR: /app/modules
@@ -24,12 +33,15 @@ services:
       - ../../backups:/backups
       - ../../modules:/app/modules
       - ../../documents:/documents
+    # Informational only — install-pi.sh waits on :3001 itself. Do not gate the
+    # gateway on service_healthy: a crash then hides behind "unhealthy" with no
+    # logs, and a slow Pi migration looks like a hard failure.
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3000/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
-      interval: 15s
-      timeout: 10s
-      retries: 10
-      start_period: 40s
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 180s
     logging:
       options:
         max-size: "10m"
@@ -41,16 +53,18 @@ services:
     network_mode: host
     depends_on:
       yuvomi:
-        condition: service_healthy
+        condition: service_started
     environment:
       HOMEY_GATEWAY_PORT: "3000"
       HOMEY_BIND: "0.0.0.0"
       YUVOMI_UPSTREAM: http://127.0.0.1:3001
       YUVOMI_INTERNAL_URL: http://127.0.0.1:3001
       HOMEY_DATA_DIR: /opt/yuvomi/data/homey
+      KIDS_CHORES_DATA_DIR: /opt/yuvomi/data/kids-chores
     volumes:
       - ../..:/opt/yuvomi:ro
       - ../../data/homey:/opt/yuvomi/data/homey
+      - ../../data/kids-chores:/opt/yuvomi/data/kids-chores
     working_dir: /opt/yuvomi
     command: ["node", "modules/homey/gateway.js"]
     logging:

@@ -2,18 +2,24 @@ import { t } from '/i18n.js';
 import { esc } from '/utils/html.js';
 import { mountEmptyState } from '/utils/empty-state.js';
 import { renderPageBody, renderPageHeader, renderPageSection, renderPageTitle } from '/utils/page-layout.js';
+import { makeSortable } from '/utils/sortable.js';
 import { showToast } from '/utils/toast-show.js';
 import { startDoorbellWatch } from './alert.js';
 import {
+  appendPinIcon,
   button,
   deviceIcon,
   heading,
   homeyApi,
   ICON_CHOICES,
+  iconChoiceLabel,
   isDisplayMode,
   mountConnectionForm,
-  pinIcon,
+  pinIconUrl,
+  secondaryValueLabel,
   suggestIcon,
+  usesHomeyIcon,
+  usesHomeyLabel,
   valueLabel,
 } from './browser.js';
 
@@ -75,7 +81,13 @@ export async function render(container, context) {
   let csrf = '';
   let access = 'read';
   let gone = false;
-  signal?.addEventListener('abort', () => { gone = true; }, { once: true });
+  let pinSortable = null;
+  let pinsSnapshot = [];
+  signal?.addEventListener('abort', () => {
+    gone = true;
+    pinSortable?.destroy?.();
+    pinSortable = null;
+  }, { once: true });
 
   function fail(err) {
     if (gone) return;
@@ -90,13 +102,61 @@ export async function render(container, context) {
     else banner.textContent = '';
   }
 
+  function pinOrderIds() {
+    return [...grid.querySelectorAll('.homey-pin-card[data-pin-id]')]
+      .map((card) => card.dataset.pinId)
+      .filter(Boolean);
+  }
+
+  function syncMoveButtons() {
+    const cards = [...grid.querySelectorAll('.homey-pin-card[data-pin-id]')];
+    cards.forEach((card, index) => {
+      const up = card.querySelector('[data-homey-move="up"]');
+      const down = card.querySelector('[data-homey-move="down"]');
+      if (up) up.disabled = index === 0;
+      if (down) down.disabled = index === cards.length - 1;
+    });
+  }
+
+  async function persistPinOrder({ toast = true } = {}) {
+    const order = pinOrderIds();
+    const data = await homeyApi('/pins/order', {
+      method: 'PUT',
+      csrf,
+      signal,
+      body: { order },
+    });
+    csrf = data.csrfToken || csrf;
+    pinsSnapshot = Array.isArray(data.pins) ? data.pins : pinsSnapshot;
+    syncMoveButtons();
+    if (toast) showToast(t('extensions.homey.page.orderSaved'), 'success');
+  }
+
+  async function movePin(card, direction) {
+    const sibling = direction < 0 ? card.previousElementSibling : card.nextElementSibling;
+    if (!sibling || !sibling.classList.contains('homey-pin-card')) return;
+    if (direction < 0) grid.insertBefore(card, sibling);
+    else grid.insertBefore(sibling, card);
+    syncMoveButtons();
+    try {
+      await persistPinOrder();
+    } catch (err) {
+      if (err?.csrfToken) csrf = err.csrfToken;
+      fail(err);
+      await refreshPins();
+    }
+  }
+
   async function refreshPins() {
     const data = await homeyApi('/pins', { signal, csrf });
     if (gone) return;
     csrf = data.csrfToken || csrf;
+    pinsSnapshot = Array.isArray(data.pins) ? data.pins : [];
+    pinSortable?.destroy?.();
+    pinSortable = null;
     grid.replaceChildren();
     empty.replaceChildren();
-    if (!data.pins?.length) {
+    if (!pinsSnapshot.length) {
       mountEmptyState(empty, {
         icon: 'house',
         title: t('extensions.homey.page.emptyTitle'),
@@ -104,79 +164,171 @@ export async function render(container, context) {
       });
       return;
     }
-    for (const pin of data.pins) grid.append(pinCard(pin));
+    for (const pin of pinsSnapshot) grid.append(pinCard(pin));
     paintIcons(grid);
+    syncMoveButtons();
+    if (access === 'write') {
+      pinSortable = await makeSortable(grid, {
+        handle: '[data-reorder-handle]',
+        draggable: '.homey-pin-card',
+        onEnd: async () => {
+          syncMoveButtons();
+          try {
+            await persistPinOrder();
+          } catch (err) {
+            if (err?.csrfToken) csrf = err.csrfToken;
+            fail(err);
+            await refreshPins();
+          }
+        },
+      });
+    }
   }
 
   function pinFace(pin, { interactive }) {
     const face = document.createElement(interactive ? 'button' : 'div');
     if (interactive) face.type = 'button';
     const display = isDisplayMode(pin);
-    face.className = `card card--padded homey-pin${display ? ' homey-pin--display' : ''}${interactive ? ' card--interactive' : ''}${pin.value === true ? ' homey-pin--on' : ''}`;
+    const hasReading = Boolean(pin.reading) || display
+      || String(pin.capabilityId || '').includes('temperature');
+    face.className = `card card--padded homey-pin${display ? ' homey-pin--display' : ''}${hasReading ? ' homey-pin--meter' : ''}${interactive ? ' card--interactive' : ''}${pin.value === true ? ' homey-pin--on' : ''}`;
     face.dataset.pinId = pin.id;
     if (interactive && pin.mode === 'toggle') {
       face.setAttribute('aria-pressed', pin.value === true ? 'true' : 'false');
     }
     if (interactive) face.disabled = access !== 'write' || pin.unavailable;
+
+    const head = document.createElement('span');
+    head.className = 'homey-pin__head';
+    const badge = document.createElement('span');
+    badge.className = 'homey-pin__badge';
+    badge.setAttribute('aria-hidden', 'true');
+    appendPinIcon(badge, pin);
+    const copy = document.createElement('span');
+    copy.className = 'homey-pin__copy';
     const label = document.createElement('span');
     label.className = 'homey-pin__label';
     label.textContent = pin.label;
     const detail = document.createElement('span');
     detail.className = 'homey-pin__detail';
     detail.textContent = pin.detail || '';
+    copy.append(label, detail);
+    head.append(badge, copy);
+
     const value = document.createElement('span');
-    value.className = display ? 'homey-pin__reading' : 'homey-pin__value';
+    value.className = hasReading ? 'homey-pin__reading' : 'homey-pin__value';
     value.textContent = valueLabel(pin);
-    const titleRow = document.createElement('span');
-    titleRow.className = 'homey-pin__title';
-    const iconName = pinIcon(pin);
-    if (iconName) {
-      const icon = document.createElement('i');
-      icon.dataset.lucide = iconName;
-      icon.setAttribute('aria-hidden', 'true');
-      titleRow.append(icon);
+    face.append(head, value);
+    const secondary = secondaryValueLabel(pin);
+    if (secondary) {
+      const sub = document.createElement('span');
+      sub.className = 'homey-pin__value';
+      sub.textContent = secondary;
+      face.append(sub);
     }
-    titleRow.append(label);
-    face.append(titleRow, detail, value);
     return face;
+  }
+
+  function modeRow(group, title, { homeyLabel, customLabel, homeyChecked }) {
+    const fieldset = document.createElement('fieldset');
+    fieldset.className = 'homey-pin-edit__modes';
+    const legend = document.createElement('legend');
+    legend.className = 'form-label';
+    legend.textContent = title;
+    fieldset.append(legend);
+    const options = document.createElement('div');
+    options.className = 'homey-pin-edit__choices';
+    for (const [value, text, checked] of [
+      ['homey', homeyLabel, homeyChecked],
+      ['custom', customLabel, !homeyChecked],
+    ]) {
+      const label = document.createElement('label');
+      label.className = 'homey-pin-edit__choice';
+      const input = document.createElement('input');
+      input.type = 'radio';
+      input.name = group;
+      input.value = value;
+      input.checked = checked;
+      const span = document.createElement('span');
+      span.textContent = text;
+      label.append(input, span);
+      options.append(label);
+    }
+    fieldset.append(options);
+    return fieldset;
   }
 
   function pinEditForm(pin, card) {
     const form = document.createElement('form');
     form.className = 'homey-pin-edit';
     form.hidden = true;
-    const labelField = document.createElement('label');
-    labelField.className = 'form-label';
-    labelField.textContent = t('extensions.homey.page.editLabel');
+
+    const labelModes = modeRow('labelMode', t('extensions.homey.page.editLabel'), {
+      homeyLabel: t('extensions.homey.page.labelFromHomey'),
+      customLabel: t('extensions.homey.page.labelCustom'),
+      homeyChecked: usesHomeyLabel(pin),
+    });
     const labelInput = document.createElement('input');
     labelInput.className = 'form-input';
     labelInput.name = 'label';
-    labelInput.required = true;
     labelInput.maxLength = 80;
     labelInput.value = pin.label;
-    labelField.append(labelInput);
-    const iconField = document.createElement('label');
-    iconField.className = 'form-label';
-    iconField.textContent = t('extensions.homey.page.editIcon');
+    labelInput.placeholder = t('extensions.homey.page.editLabelAlias');
+    labelInput.disabled = usesHomeyLabel(pin);
+
+    const iconModes = modeRow('iconMode', t('extensions.homey.page.editIcon'), {
+      homeyLabel: t('extensions.homey.page.iconFromHomey'),
+      customLabel: t('extensions.homey.page.iconCustom'),
+      homeyChecked: usesHomeyIcon(pin),
+    });
     const iconSelect = document.createElement('select');
     iconSelect.className = 'form-input';
     iconSelect.name = 'icon';
-    const currentIcon = pinIcon(pin);
+    const currentIcon = pin.icon || suggestIcon(pin.capabilityId, pin.deviceClass, pin.kind);
     for (const name of ICON_CHOICES) {
       const option = document.createElement('option');
       option.value = name;
-      option.textContent = name;
+      option.textContent = iconChoiceLabel(name);
       if (name === currentIcon) option.selected = true;
       iconSelect.append(option);
     }
     if (currentIcon && !ICON_CHOICES.includes(currentIcon)) {
       const option = document.createElement('option');
       option.value = currentIcon;
-      option.textContent = currentIcon;
+      option.textContent = iconChoiceLabel(currentIcon);
       option.selected = true;
       iconSelect.prepend(option);
     }
-    iconField.append(iconSelect);
+    iconSelect.disabled = usesHomeyIcon(pin);
+    if (usesHomeyIcon(pin) && pinIconUrl(pin)) {
+      const preview = document.createElement('p');
+      preview.className = 'form-hint';
+      preview.textContent = t('extensions.homey.page.iconHomeyHint');
+      iconModes.append(preview);
+    }
+
+    const sync = () => {
+      const labelMode = form.querySelector('input[name="labelMode"]:checked')?.value || 'homey';
+      const iconMode = form.querySelector('input[name="iconMode"]:checked')?.value || 'homey';
+      labelInput.disabled = labelMode === 'homey';
+      labelInput.required = labelMode === 'custom';
+      iconSelect.disabled = iconMode === 'homey';
+    };
+    form.addEventListener('change', sync, { signal });
+
+    const newLineLabel = document.createElement('label');
+    newLineLabel.className = 'homey-pin-edit__choice';
+    const newLineInput = document.createElement('input');
+    newLineInput.type = 'checkbox';
+    newLineInput.name = 'newLine';
+    newLineInput.checked = pin.newLine === true;
+    const newLineText = document.createElement('span');
+    newLineText.textContent = t('extensions.homey.page.newLine');
+    newLineLabel.append(newLineInput, newLineText);
+    const newLineHint = document.createElement('p');
+    newLineHint.className = 'form-hint';
+    newLineHint.textContent = t('extensions.homey.page.newLineHint');
+
     const actions = document.createElement('div');
     actions.className = 'homey-actions';
     const save = button(t('extensions.homey.page.savePin'), 'btn btn--primary');
@@ -187,18 +339,24 @@ export async function render(container, context) {
       form.hidden = true;
     }, { signal });
     actions.append(save, cancel);
-    form.append(labelField, iconField, actions);
+    form.append(labelModes, labelInput, iconModes, iconSelect, newLineLabel, newLineHint, actions);
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       save.disabled = true;
+      const labelMode = form.querySelector('input[name="labelMode"]:checked')?.value || 'homey';
+      const iconMode = form.querySelector('input[name="iconMode"]:checked')?.value || 'homey';
       try {
         const data = await homeyApi(`/pins/${encodeURIComponent(pin.id)}`, {
           method: 'PATCH',
           csrf,
           signal,
           body: {
-            label: labelInput.value.trim(),
-            icon: iconSelect.value,
+            labelMode,
+            iconMode,
+            label: labelMode === 'custom' ? labelInput.value.trim() : (pin.label || labelInput.value.trim()),
+            icon: iconMode === 'custom' ? iconSelect.value : (pin.icon || iconSelect.value),
+            homeyIconId: pin.homeyIconId || '',
+            newLine: newLineInput.checked,
           },
         });
         csrf = data.csrfToken || csrf;
@@ -217,7 +375,8 @@ export async function render(container, context) {
 
   function pinCard(pin) {
     const card = document.createElement('div');
-    card.className = 'homey-pin-card';
+    card.className = `homey-pin-card${pin.newLine ? ' homey-pin-card--newline' : ''}`;
+    card.dataset.pinId = pin.id;
     const display = isDisplayMode(pin);
     const face = pinFace(pin, { interactive: !display });
     if (!display) face.addEventListener('click', () => activate(pin, face), { signal });
@@ -225,14 +384,30 @@ export async function render(container, context) {
     if (access === 'write') {
       const form = pinEditForm(pin, card);
       const actions = document.createElement('div');
-      actions.className = 'homey-actions';
+      actions.className = 'homey-actions homey-pin-card__toolbar';
+      const handle = document.createElement('button');
+      handle.type = 'button';
+      handle.className = 'homey-pin-card__drag';
+      handle.dataset.reorderHandle = '';
+      handle.setAttribute('aria-label', t('extensions.homey.page.reorderHandle', { name: pin.label }));
+      handle.title = t('extensions.homey.page.reorderHandleHint');
+      const handleIcon = document.createElement('i');
+      handleIcon.dataset.lucide = 'grip-vertical';
+      handleIcon.setAttribute('aria-hidden', 'true');
+      handle.append(handleIcon);
+      const up = button(t('extensions.homey.page.moveUp'), 'btn btn--secondary');
+      up.dataset.homeyMove = 'up';
+      up.addEventListener('click', () => movePin(card, -1), { signal });
+      const down = button(t('extensions.homey.page.moveDown'), 'btn btn--secondary');
+      down.dataset.homeyMove = 'down';
+      down.addEventListener('click', () => movePin(card, 1), { signal });
       const edit = button(t('extensions.homey.page.edit'), 'btn btn--secondary');
       edit.addEventListener('click', () => {
         form.hidden = !form.hidden;
       }, { signal });
       const remove = button(t('extensions.homey.page.remove'), 'btn btn--secondary');
       remove.addEventListener('click', () => removePin(pin.id), { signal });
-      actions.append(edit, remove);
+      actions.append(handle, up, down, edit, remove);
       card.append(actions);
     }
     return card;
@@ -332,13 +507,16 @@ export async function render(container, context) {
       capabilityId: cap.id,
       deviceClass: device.deviceClass || '',
       icon: suggestIcon(cap.id, device.deviceClass, 'capability'),
+      labelMode: 'homey',
+      iconMode: 'homey',
+      homeyIconId: cap.iconId || device.iconId || '',
     };
     if (cap.role === 'sense' || cap.setable === false) {
       return {
         ...base,
         mode: 'display',
         units: cap.units || '',
-        label: cap.title ? `${device.name}` : device.name,
+        label: device.name,
         detail: [device.zone, cap.title].filter(Boolean).join(' · '),
       };
     }
@@ -453,12 +631,32 @@ export async function render(container, context) {
     card.className = 'card card--padded homey-device';
     card.dataset.homeyItem = 'device';
     const title = document.createElement('h3');
-    const iconName = deviceIcon(device.deviceClass);
-    if (iconName) {
-      const icon = document.createElement('i');
-      icon.dataset.lucide = iconName;
-      icon.setAttribute('aria-hidden', 'true');
-      title.append(icon);
+    if (device.iconId) {
+      const img = document.createElement('img');
+      img.className = 'homey-pin__glyph';
+      img.src = `/api/extensions/homey/icon/${encodeURIComponent(device.iconId)}`;
+      img.alt = '';
+      img.decoding = 'async';
+      img.loading = 'lazy';
+      img.addEventListener('error', () => {
+        img.remove();
+        const iconName = deviceIcon(device.deviceClass);
+        if (!iconName || !title.isConnected) return;
+        const icon = document.createElement('i');
+        icon.dataset.lucide = iconName;
+        icon.setAttribute('aria-hidden', 'true');
+        title.prepend(icon);
+        paintIcons(title);
+      }, { once: true });
+      title.append(img);
+    } else {
+      const iconName = deviceIcon(device.deviceClass);
+      if (iconName) {
+        const icon = document.createElement('i');
+        icon.dataset.lucide = iconName;
+        icon.setAttribute('aria-hidden', 'true');
+        title.append(icon);
+      }
     }
     title.append(document.createTextNode(device.name));
     card.append(title);
@@ -537,6 +735,9 @@ export async function render(container, context) {
             : t('extensions.homey.page.flows'),
           flowId: flow.id,
           advanced,
+          labelMode: 'homey',
+          iconMode: 'custom',
+          icon: 'workflow',
         });
       } catch (err) {
         if (err?.csrfToken) csrf = err.csrfToken;
@@ -583,6 +784,9 @@ export async function render(container, context) {
           detail: tag.value.trim() ? `${event.value.trim()} · ${tag.value.trim()}` : event.value.trim(),
           event: event.value.trim(),
           tag: tag.value.trim(),
+          labelMode: label.value.trim() ? 'custom' : 'homey',
+          iconMode: 'custom',
+          icon: 'webhook',
         });
         event.value = '';
         tag.value = '';

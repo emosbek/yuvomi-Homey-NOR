@@ -2,11 +2,17 @@ import { t } from '/i18n.js';
 import { ensureStyle } from '/utils/component-style.js';
 import { mountEmptyState } from '/utils/empty-state.js';
 import { showToast } from '/utils/toast-show.js';
-import { homeyApi, isDisplayMode, pinIcon, valueLabel } from '../browser.js';
+import {
+  appendPinIcon,
+  homeyApi,
+  isDisplayMode,
+  secondaryValueLabel,
+  valueLabel,
+} from '../browser.js';
 
 const STYLE = '/api/v1/modules/assets/homey/style.css';
 const HOMEY_PATH = '/m/homey';
-const ACCENT = '#0B6E99';
+const ACCENT = '#00668F';
 
 function paintIcons(root) {
   if (window.lucide) window.lucide.createIcons({ el: root });
@@ -54,36 +60,45 @@ function header(title, count) {
 
 function pinTile(pin, { access, onActivate }) {
   const display = isDisplayMode(pin);
+  const hasReading = Boolean(pin.reading) || display
+    || String(pin.capabilityId || '').includes('temperature');
   const face = document.createElement(display ? 'div' : 'button');
   if (!display) face.type = 'button';
-  face.className = `card card--padded homey-pin homey-widget__pin${display ? ' homey-pin--display' : ' card--interactive'}${pin.value === true ? ' homey-pin--on' : ''}`;
+  face.className = `card card--padded homey-pin homey-widget__pin${display ? ' homey-pin--display' : ' card--interactive'}${hasReading ? ' homey-pin--meter' : ''}${pin.value === true ? ' homey-pin--on' : ''}${pin.newLine ? ' homey-widget__pin--newline' : ''}`;
   face.dataset.pinId = pin.id;
   if (!display && pin.mode === 'toggle') {
     face.setAttribute('aria-pressed', pin.value === true ? 'true' : 'false');
   }
   if (!display) face.disabled = access !== 'write' || pin.unavailable;
 
-  const titleRow = document.createElement('span');
-  titleRow.className = 'homey-pin__title';
-  const iconName = pinIcon(pin);
-  if (iconName) {
-    const icon = document.createElement('i');
-    icon.dataset.lucide = iconName;
-    icon.setAttribute('aria-hidden', 'true');
-    titleRow.append(icon);
-  }
+  const head = document.createElement('span');
+  head.className = 'homey-pin__head';
+  const badge = document.createElement('span');
+  badge.className = 'homey-pin__badge';
+  badge.setAttribute('aria-hidden', 'true');
+  appendPinIcon(badge, pin);
+  const copy = document.createElement('span');
+  copy.className = 'homey-pin__copy';
   const label = document.createElement('span');
   label.className = 'homey-pin__label';
   label.textContent = pin.label;
-  titleRow.append(label);
-
   const detail = document.createElement('span');
   detail.className = 'homey-pin__detail';
   detail.textContent = pin.detail || '';
+  copy.append(label, detail);
+  head.append(badge, copy);
+
   const value = document.createElement('span');
-  value.className = display ? 'homey-pin__reading' : 'homey-pin__value';
+  value.className = hasReading ? 'homey-pin__reading' : 'homey-pin__value';
   value.textContent = valueLabel(pin);
-  face.append(titleRow, detail, value);
+  face.append(head, value);
+  const secondary = secondaryValueLabel(pin);
+  if (secondary) {
+    const sub = document.createElement('span');
+    sub.className = 'homey-pin__value';
+    sub.textContent = secondary;
+    face.append(sub);
+  }
   if (!display) face.addEventListener('click', () => onActivate(pin, face));
   return face;
 }

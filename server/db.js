@@ -11293,7 +11293,625 @@ const MIGRATIONS = [
       `).run();
     },
   },
+  {
+    version: 259,
+    description: 'Shopping: a waiting move of a mirrored item remembers when it began (#1911)',
+    // EIN WARTENDER UMZUG BEKOMMT EIN ENDE (#1911). Ein Umzug (#1700, v243)
+    // wartet, solange die Server-Liste seines Objekts nicht eingeschaltet ist -
+    // ohne Zaehler und ohne Uhr, also fuer immer, mit einem Eintrag, der am
+    // alten Platz weiterlebt. `outbound_move_since` ist der Zeitpunkt, an dem
+    // die Vormerkung gesetzt wurde (UTC, `datetime('now')`); nach der Frist
+    // geht die Zeile auf die Liste ihres Objekts zurueck.
+    //
+    // NACHTRAG: ein schon wartender Umzug beginnt seine Frist mit dem Update,
+    // nicht mit einem geratenen Zeitpunkt davor - sonst ginge er beim ersten
+    // Lauf danach ohne Frist zurueck.
+    up(db) {
+      const has = db.prepare('PRAGMA table_info(shopping_items)').all().some((c) => c.name === 'outbound_move_since');
+      if (!has) db.exec('ALTER TABLE shopping_items ADD COLUMN outbound_move_since TEXT');
+      backfillShoppingMoveSince(db);
+    },
+  },
+  {
+    version: 260,
+    description: 'Shopping: tell whoever moved a mirrored item when the move was taken back (#1912)',
+    foreignKeysOff: true,
+    up: `
+      -- WER HAT VERSCHOBEN (#1912). Geht ein Umzug zurueck (fuenfte Absage des
+      -- Ziels, Zielliste auf dem Server fort, Frist aus #1911), bekommt die
+      -- Person, die verschoben hat, eine Meldung an der Glocke. Die Zeile
+      -- kannte sie bisher nicht. NULL heisst: unbekannt (Umzug von vor dem
+      -- Update, Konto geloescht) - dann gibt es keine Meldung, nur das Log.
+      ALTER TABLE shopping_items ADD COLUMN outbound_move_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+
+      -- DIE MELDUNG SELBST, als Momentaufnahme. Namen statt nur Verweise: nach
+      -- der Frist steht der Artikel auf einer abgeschalteten Liste, und der
+      -- naechste Abruf nimmt ihn dort lokal fort (sein Eintrag lebt auf dem
+      -- Server weiter). Die Meldung muss trotzdem sagen koennen, was passiert
+      -- ist. Die Verweise tragen nur den Sprung auf die Liste.
+      CREATE TABLE shopping_move_notices (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        item_id          INTEGER REFERENCES shopping_items(id) ON DELETE SET NULL,
+        item_name        TEXT    NOT NULL,
+        back_list_id     INTEGER REFERENCES shopping_lists(id) ON DELETE SET NULL,
+        back_list_name   TEXT    NOT NULL,
+        target_list_name TEXT    NOT NULL,
+        -- 'refused': das Ziel hat nicht angenommen (fuenfte Absage, Liste fort);
+        -- 'waited': die alte Liste war zu lange abgeschaltet (#1911).
+        reason           TEXT    NOT NULL CHECK(reason IN ('refused', 'waited')),
+        created_at       TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+      );
+      CREATE INDEX idx_shopping_move_notices_user ON shopping_move_notices(user_id);
+
+      -- Die Glocke ist die Erinnerungstabelle; ihr CHECK waechst nur per
+      -- Rebuild (wie v220, dessen Werte hier alle wieder stehen muessen).
+      DROP TRIGGER IF EXISTS trg_reminders_tasks_ad;
+      DROP TRIGGER IF EXISTS trg_reminders_events_ad;
+      CREATE TABLE reminders_new (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_type TEXT    NOT NULL CHECK(entity_type IN ('task', 'event', 'subscription', 'inventory_item', 'inventory_tracked_date', 'pantry_item', 'cycle_period', 'cycle_log_nudge', 'schedule_entry', 'schedule_extra_entry', 'waste_pickup', 'document_expiry', 'health_prevention_due', 'fasting_goal', 'fasting_next_start', 'shopping_move_returned')),
+        entity_id   INTEGER NOT NULL,
+        remind_at   TEXT    NOT NULL,
+        dismissed   INTEGER NOT NULL DEFAULT 0,
+        created_by  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at  TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+        pushed_at   TEXT,
+        assigned_from INTEGER REFERENCES users(id) ON DELETE SET NULL
+      );
+      INSERT INTO reminders_new (id, entity_type, entity_id, remind_at, dismissed, created_by, created_at, pushed_at, assigned_from)
+        SELECT id, entity_type, entity_id, remind_at, dismissed, created_by, created_at, pushed_at, assigned_from FROM reminders;
+      DROP TABLE reminders;
+      ALTER TABLE reminders_new RENAME TO reminders;
+      CREATE INDEX idx_reminders_entity ON reminders(entity_type, entity_id);
+      CREATE INDEX idx_reminders_remind ON reminders(remind_at);
+      CREATE INDEX idx_reminders_user ON reminders(created_by);
+      CREATE INDEX idx_reminders_assigned_from ON reminders(assigned_from);
+
+      CREATE TRIGGER trg_reminders_tasks_ad
+      AFTER DELETE ON tasks BEGIN
+        DELETE FROM reminders WHERE entity_type = 'task' AND entity_id = OLD.id;
+      END;
+      CREATE TRIGGER trg_reminders_events_ad
+      AFTER DELETE ON calendar_events BEGIN
+        DELETE FROM reminders WHERE entity_type = 'event' AND entity_id = OLD.id;
+      END;
+      -- Die Meldung geht mit ihrer Momentaufnahme (Konto geloescht).
+      CREATE TRIGGER trg_reminders_shopping_move_notices_ad
+      AFTER DELETE ON shopping_move_notices BEGIN
+        DELETE FROM reminders WHERE entity_type = 'shopping_move_returned' AND entity_id = OLD.id;
+      END;
+    `,
+  },
+  {
+    version: 261,
+    description: 'CalDAV: remember whether a calendar or list takes new entries (#1840)',
+    up: `
+      -- DARF HIER GESCHRIEBEN WERDEN (#1840). Die Auflistung liest je
+      -- Collection current-user-privilege-set (RFC 3744); die Ziel-Auswahl der
+      -- Formulare bietet nur an, was neue Eintraege annimmt. 1 = ja, 0 = nein,
+      -- NULL = der Server sagt es nicht (oder die Liste ist von vor dem
+      -- Update): gilt als beschreibbar, wie bisher.
+      ALTER TABLE caldav_calendar_selection ADD COLUMN writable INTEGER;
+      ALTER TABLE caldav_reminder_selection ADD COLUMN writable INTEGER;
+    `,
+  },
+  {
+    version: 262,
+    description: 'notes: a visibility of their own and a lock on a single note (#1514, #1602)',
+    up: `
+      -- SICHTBARKEIT (#1514): 'all' (der Haushalt) oder 'private' (nur wer sie
+      -- angelegt hat), dieselben Woerter wie Aufgaben und Termine (DECISIONS 5).
+      -- Default 'all': jede bestehende Notiz bleibt, wer sie bisher sah.
+      ALTER TABLE notes ADD COLUMN visibility TEXT NOT NULL DEFAULT 'all'
+        CHECK (visibility IN ('all', 'private'));
+      -- SPERRE (#1602): 1 = nur Ersteller:in und Admins aendern die Notiz,
+      -- auch ihre Checklisten-Haken. Default 0, also wie bisher.
+      ALTER TABLE notes ADD COLUMN locked INTEGER NOT NULL DEFAULT 0
+        CHECK (locked IN (0, 1));
+    `,
+  },
+  {
+    version: 263,
+    description: 'split expenses: a recurring expense remembers when it started failing (#1746)',
+    up: `
+      -- Der erste unerwartete Fehlschlag des Buchungslaufs (#1746), ISO-Zeitpunkt
+      -- in UTC, oder NULL. Ein unerwarteter Fehler (ein Bug, die Umgebung)
+      -- pausiert eine Serie bewusst nicht, damit kein Fehler auf unserer Seite
+      -- still die Miete eines Haushalts anhaelt; stattdessen steht er hier und
+      -- die Zeile zeigt ihn. Der Lauf setzt ihn beim ersten Fehlschlag und laesst
+      -- ihn bei weiteren stehen; eine Buchung, ein Bearbeiten und eine Pause aus
+      -- bekanntem Grund leeren ihn (server/services/split-expenses-scheduler.js,
+      -- PUT /split-expenses/recurring/:id). Bestandsserien starten ohne.
+      -- Ein kuenftiger Rebuild von recurring_expenses muss die Spalte mitnehmen.
+      ALTER TABLE recurring_expenses ADD COLUMN failed_at TEXT;
+    `,
+  },
+  {
+    version: 264,
+    description: 'subscriptions: an account as the default for every payment it books (#1277)',
+    up: `
+      -- KONTO AM ABO (#1277): die Vorgabe fuer jede Buchung, die das Abo
+      -- schreibt. NULL = ohne Konto, wie bisher jede Abo-Buchung. Dieselbe
+      -- Referenz wie budget_entries.account_id und budget_loans.account_id;
+      -- die DELETE-Route eines Kontos leert sie zusaetzlich ausdruecklich.
+      ALTER TABLE budget_subscriptions ADD COLUMN account_id INTEGER
+        REFERENCES budget_accounts(id) ON DELETE SET NULL;
+    `,
+  },
+  {
+    version: 265,
+    description: 'sync: several default assignees per calendar, subscription and reminder list (#1897, #1221)',
+    up: `
+      -- MEHRERE STANDARD-PERSONEN JE QUELLE (#1897): ein gemeinsamer Kalender
+      -- ("Zusammen") bringt seine Termine fuer beide Personen herein. Bisher trug
+      -- jede Quelle genau eine Person in default_assignee_user_id (Migration 79).
+      -- Je Elterntabelle eine Join-Tabelle, damit beide Seiten einen echten
+      -- Fremdschluessel haben: verschwindet der Kalender, das Abo, die
+      -- Erinnerungsliste oder das Konto, gehen die Zeilen mit.
+      --
+      -- position: die Reihenfolge der Wahl. Die erste Person ist die primaere
+      -- Zuweisung eines neuen Termins (calendar_events.assigned_to), und deren
+      -- Farbe traegt ein Termin ohne eigene (#891).
+      --
+      -- Die alte Spalte bleibt stehen (Migrationen wachsen nur am Ende, und
+      -- Bestandsinstallationen tragen sie), wird ab hier aber nicht mehr gelesen;
+      -- nur das Entfernen eines Kontos leert sie noch. Ein kuenftiger Umbau einer der drei Elterntabellen mit
+      -- DROP TABLE muss mit foreignKeysOff laufen, sonst raeumt CASCADE diese
+      -- Zeilen ab.
+      CREATE TABLE external_calendar_assignees (
+        calendar_id INTEGER NOT NULL REFERENCES external_calendars(id) ON DELETE CASCADE,
+        user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        position    INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (calendar_id, user_id)
+      );
+      CREATE INDEX idx_external_calendar_assignees_user ON external_calendar_assignees(user_id);
+
+      CREATE TABLE ics_subscription_assignees (
+        subscription_id INTEGER NOT NULL REFERENCES ics_subscriptions(id) ON DELETE CASCADE,
+        user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        position        INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (subscription_id, user_id)
+      );
+      CREATE INDEX idx_ics_subscription_assignees_user ON ics_subscription_assignees(user_id);
+
+      -- Erinnerungslisten (#1221): nur fuer Listen, die auf Aufgaben zeigen; die
+      -- Route lehnt eine Einkaufsliste ab, der Sync liest sie dort nicht.
+      CREATE TABLE caldav_reminder_assignees (
+        selection_id INTEGER NOT NULL REFERENCES caldav_reminder_selection(id) ON DELETE CASCADE,
+        user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        position     INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (selection_id, user_id)
+      );
+      CREATE INDEX idx_caldav_reminder_assignees_user ON caldav_reminder_assignees(user_id);
+
+      -- Die bestehende Einzelperson kommt als einzige Zeile mit. Eine verwaiste
+      -- Referenz (Konto geloescht, die Spalte hatte keinen Fremdschluessel)
+      -- faellt am JOIN heraus - der Sync hat sie ohnehin uebergangen.
+      INSERT INTO external_calendar_assignees (calendar_id, user_id, position)
+        SELECT ec.id, ec.default_assignee_user_id, 0
+          FROM external_calendars ec JOIN users u ON u.id = ec.default_assignee_user_id;
+      INSERT INTO ics_subscription_assignees (subscription_id, user_id, position)
+        SELECT s.id, s.default_assignee_user_id, 0
+          FROM ics_subscriptions s JOIN users u ON u.id = s.default_assignee_user_id;
+    `,
+  },
+  {
+    version: 266,
+    description: 'sync: a mirrored row is marked once a sync run has seen its object (#1839)',
+    up: `
+      -- GESEHEN, NICHT HOCHGELADEN (#1839, Entscheidung 9.10.): eine Zeile gilt
+      -- erst als Spiegel, wenn ein Abruf ihr Objekt auf dem Server gefunden hat.
+      -- "Der PUT hat geantwortet" ist kein Beleg: vor #1837 stempelte ein
+      -- abgelehnter Upload die Zeile zum Spiegel eines Objekts, das es nie gab,
+      -- und der naechste Prune loeschte sie als "anderswo entfernt".
+      --
+      -- 1 setzt nur der Abruf (der Prune, fuer jede Zeile, deren UID er
+      -- gesehen hat), nie der Upload. Der Prune loescht nur gesehene Zeilen;
+      -- eine nie gesehene, hier angelegte faellt auf lokal zurueck und geht
+      -- erneut hinauf. Bestandszeilen starten mit 0: der erste Lauf nach dem
+      -- Update loescht nichts, was er nicht gesehen hat.
+      ALTER TABLE calendar_events ADD COLUMN seen_on_server INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE tasks           ADD COLUMN seen_on_server INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE shopping_items  ADD COLUMN seen_on_server INTEGER NOT NULL DEFAULT 0;
+    `,
+  },
+  {
+    version: 267,
+    description: 'waste: one import label can map to several types (#2273)',
+    up: `
+      -- EIN LABEL, MEHRERE TYPEN (#2273): Dresden nennt zwei Tonnen in einem
+      -- Eintrag ("Leerung Bio-Tonne, Blaue Tonne"). Bisher trug eine Zuordnung
+      -- genau eine type_id (Migration 200) und ein Eintrag wurde genau ein
+      -- Termin (Migration 201). Ab hier haengen die Typen eines Labels in
+      -- waste_source_mapping_types, und ein Eintrag wird ein Termin je Typ -
+      -- Farbe, Uebersicht und Erinnerung bleiben je Tonne.
+      --
+      -- waste_source_mappings wird ohne type_id und ohne ignored neu gebaut:
+      -- "ignoriert" ist jetzt genau "keine Typ-Zeile", eine einzige Wahrheit
+      -- statt zweier Spalten, die sich widersprechen koennten. Keine Tabelle
+      -- verweist auf diese beiden, das DROP raeumt also nichts per CASCADE ab;
+      -- die neue Kindtabelle entsteht erst nach dem Umbau. Ein kuenftiger
+      -- Umbau von waste_source_mappings mit DROP TABLE muss mit foreignKeysOff
+      -- laufen, sonst nimmt CASCADE die Typ-Zeilen mit.
+      CREATE TABLE waste_source_mappings_new (
+        id                INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_id         INTEGER NOT NULL REFERENCES waste_sources(id) ON DELETE CASCADE,
+        original_label    TEXT    NOT NULL,
+        normalized_label  TEXT    NOT NULL,
+        created_at        TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+        updated_at        TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+        UNIQUE (source_id, normalized_label)
+      );
+      INSERT INTO waste_source_mappings_new (id, source_id, original_label, normalized_label, created_at, updated_at)
+        SELECT id, source_id, original_label, normalized_label, created_at, updated_at FROM waste_source_mappings;
+
+      -- type_id ohne CASCADE, wie ueberall in Waste: ein Typ, auf den eine
+      -- Zuordnung zeigt, verschwindet nicht still (invariant #5).
+      CREATE TABLE waste_source_mapping_types (
+        mapping_id INTEGER NOT NULL REFERENCES waste_source_mappings_new(id) ON DELETE CASCADE,
+        type_id    INTEGER NOT NULL REFERENCES waste_types(id),
+        PRIMARY KEY (mapping_id, type_id)
+      );
+      INSERT INTO waste_source_mapping_types (mapping_id, type_id)
+        SELECT m.id, m.type_id FROM waste_source_mappings m JOIN waste_types t ON t.id = m.type_id
+        WHERE m.ignored = 0;
+
+      DROP TABLE waste_source_mappings;
+      ALTER TABLE waste_source_mappings_new RENAME TO waste_source_mappings;
+      CREATE TRIGGER trg_waste_source_mappings_updated_at AFTER UPDATE ON waste_source_mappings FOR EACH ROW BEGIN
+        UPDATE waste_source_mappings SET updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = OLD.id; END;
+      CREATE INDEX idx_waste_source_mappings_source ON waste_source_mappings(source_id);
+      CREATE INDEX idx_waste_source_mapping_types_type ON waste_source_mapping_types(type_id);
+
+      -- Ein Eintrag (identity_key) traegt jetzt einen Termin je Typ: die
+      -- Eindeutigkeit wandert von (source_id, identity_key) auf
+      -- (source_id, identity_key, type_id). SQLite aendert keine
+      -- Tabellen-Constraint, daher Umbau; ids bleiben erhalten.
+      CREATE TABLE waste_imported_pickups_new (
+        id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_id          INTEGER NOT NULL REFERENCES waste_sources(id) ON DELETE CASCADE,
+        type_id            INTEGER NOT NULL REFERENCES waste_types(id),
+        identity_key       TEXT    NOT NULL,
+        external_uid       TEXT,
+        original_summary   TEXT,
+        date_key           TEXT    NOT NULL,
+        tz_note            TEXT,
+        created_at         TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+        updated_at         TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+        UNIQUE (source_id, identity_key, type_id)
+      );
+      INSERT INTO waste_imported_pickups_new
+        (id, source_id, type_id, identity_key, external_uid, original_summary, date_key, tz_note, created_at, updated_at)
+        SELECT id, source_id, type_id, identity_key, external_uid, original_summary, date_key, tz_note, created_at, updated_at
+        FROM waste_imported_pickups;
+      DROP TABLE waste_imported_pickups;
+      ALTER TABLE waste_imported_pickups_new RENAME TO waste_imported_pickups;
+      CREATE TRIGGER trg_waste_imported_pickups_updated_at AFTER UPDATE ON waste_imported_pickups FOR EACH ROW BEGIN
+        UPDATE waste_imported_pickups SET updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = OLD.id; END;
+      CREATE INDEX idx_waste_imported_pickups_source ON waste_imported_pickups(source_id);
+      CREATE INDEX idx_waste_imported_pickups_type_date ON waste_imported_pickups(type_id, date_key);
+      CREATE INDEX idx_waste_imported_pickups_source_date ON waste_imported_pickups(source_id, date_key);
+    `,
+  },
+  {
+    version: 268,
+    description: 'CalDAV: one task or shopping row per UID across accounts, and a deleted account releases its rows (#1906, #1885)',
+    // EINE ZEILE JE UID (#1906, Entscheidung 27.10., wie #1879 fuer Termine).
+    // Fuehrten zwei Konten dieselbe Erinnerungsliste, legte jedes seine eigene
+    // Zeile an: dieselbe Aufgabe stand zweimal da. Die Dubletten werden hier
+    // zusammengefuehrt; die AELTERE Zeile (kleinste id) bleibt und behaelt ihr
+    // Konto. Von der juengeren gehen Kommentare, Dokumente und Zuweisungen auf
+    // die aeltere ueber (Doppeltes wird uebersprungen), ebenso ihre
+    // Unteraufgaben, die Folgeaufgaben einer Serie und die Verweise aus der
+    // Haushaltshilfe. Ihre Erledigungen fallen: sie sind fast immer der Spiegel
+    // derselben Erledigung, und doppelt zaehlten Verlauf und Punkte zweimal.
+    // Unteraufgaben haengen VOR dem Loeschen um, sonst naehme CASCADE sie mit;
+    // ihre eigene UID-Gruppe fuehrt sie danach zusammen.
+    //
+    // KONTO WEG, ZEILE BLEIBT (#1885, Entscheidung 27.10.). Wie bei Terminen
+    // (v238, ON DELETE SET NULL): eine Zeile eines geloeschten Kontos verliert
+    // ihr Konto, bleibt Spiegel, und das naechste Konto, das die UID liefert,
+    // uebernimmt sie. Ein Trigger statt eines Fremdschluessels: der haette die
+    // drei grossen Tabellen samt Suchindex und Triggern neu gebaut. Er raeumt
+    // auch die Upload-Ziele (Aufgaben, Termine), die bisher von Hand fielen.
+    up(db) {
+      const groups = (table) => db.prepare(`
+        SELECT external_uid AS uid, MIN(id) AS keep FROM ${table}
+         WHERE external_source = 'caldav' AND external_uid IS NOT NULL
+         GROUP BY external_uid HAVING COUNT(*) > 1
+      `).all();
+      const youngerOf = (table, uid, keep) => db.prepare(`
+        SELECT id FROM ${table} WHERE external_source = 'caldav' AND external_uid = ? AND id <> ?
+      `).all(uid, keep).map((r) => r.id);
+
+      for (const { uid, keep } of groups('tasks')) {
+        for (const drop of youngerOf('tasks', uid, keep)) {
+          db.prepare('UPDATE tasks SET parent_task_id = ? WHERE parent_task_id = ?').run(keep, drop);
+          db.prepare('UPDATE tasks SET recurrence_origin_id = ? WHERE recurrence_origin_id = ?').run(keep, drop);
+          db.prepare('UPDATE task_comments SET task_id = ? WHERE task_id = ?').run(keep, drop);
+          db.prepare('UPDATE OR IGNORE task_documents SET task_id = ? WHERE task_id = ?').run(keep, drop);
+          db.prepare('UPDATE OR IGNORE task_assignments SET task_id = ? WHERE task_id = ?').run(keep, drop);
+          db.prepare('UPDATE housekeeping_work_sessions SET payment_task_id = ? WHERE payment_task_id = ?').run(keep, drop);
+          db.prepare("DELETE FROM caldav_upload_attempts WHERE kind = 'task' AND row_id = ?").run(drop);
+          db.prepare('DELETE FROM tasks WHERE id = ?').run(drop);
+        }
+      }
+      for (const { uid, keep } of groups('shopping_items')) {
+        for (const drop of youngerOf('shopping_items', uid, keep)) {
+          db.prepare('UPDATE housekeeping_supply_requests SET shopping_item_id = ? WHERE shopping_item_id = ?').run(keep, drop);
+          db.prepare("DELETE FROM caldav_upload_attempts WHERE kind = 'item' AND row_id = ?").run(drop);
+          db.prepare('DELETE FROM shopping_items WHERE id = ?').run(drop);
+        }
+      }
+
+      // Bestand, der schon heute auf ein geloeschtes Konto zeigt (gedriftete DB).
+      db.exec(`
+        UPDATE tasks SET external_account_id = NULL
+         WHERE external_account_id IS NOT NULL AND external_account_id NOT IN (SELECT id FROM caldav_accounts);
+        UPDATE shopping_items SET external_account_id = NULL
+         WHERE external_account_id IS NOT NULL AND external_account_id NOT IN (SELECT id FROM caldav_accounts);
+
+        CREATE TRIGGER trg_caldav_accounts_release_rows
+          AFTER DELETE ON caldav_accounts FOR EACH ROW
+          BEGIN
+            UPDATE tasks
+               SET external_account_id = NULL, outbound_dirty = 0, outbound_attempts = 0
+             WHERE external_account_id = OLD.id;
+            UPDATE tasks
+               SET target_caldav_account_id = NULL, target_caldav_list_url = NULL
+             WHERE target_caldav_account_id = OLD.id;
+            UPDATE shopping_items
+               SET external_account_id = NULL, outbound_dirty = 0, outbound_attempts = 0,
+                   outbound_move = 0, outbound_move_attempts = 0, outbound_move_since = NULL, outbound_move_by = NULL
+             WHERE external_account_id = OLD.id;
+            UPDATE calendar_events
+               SET target_caldav_account_id = NULL, target_caldav_calendar_url = NULL
+             WHERE target_caldav_account_id = OLD.id;
+          END;
+      `);
+    },
+  },
+  {
+    version: 269,
+    description: 'users: a member colour is #RRGGBB or the default',
+    // Die Mitgliedsfarbe steht bei allen Mitgliedern in einem style-Attribut.
+    // Bis hierher nahmen Profil, Mitgliederverwaltung und Haushaltshilfe jede
+    // Zeichenkette an; ab jetzt nur #RRGGBB. Was vorher schon drinstand und
+    // kein HEX ist, faellt auf den Standard von PATCH /me/profile zurueck.
+    up: `
+      UPDATE users SET avatar_color = '#007AFF'
+       WHERE avatar_color NOT GLOB '#[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]';
+    `,
+  },
+  {
+    version: 270,
+    description: 'recipes: servings count',
+    // Fuer wie viele Portionen die Mengen eines Rezepts gelten (R24, E12).
+    // NULL heisst "nicht angegeben" - ein Bestandsrezept behauptet keine Zahl,
+    // und die Oberflaeche rechnet dann in Vielfachen statt in Portionen.
+    // Dieselbe Spalte, neben die docs/DECISIONS.md die Naehrwerte je Portion
+    // stellt. Bewacht, weil reconcileCriticalSchema sie nicht nachtraegt und
+    // ein zweiter Lauf auf einer gedrifteten Datenbank sonst scheiterte.
+    up(database) {
+      const has = database.prepare('PRAGMA table_info(recipes)').all().some((c) => c.name === 'servings');
+      if (!has) {
+        database.exec('ALTER TABLE recipes ADD COLUMN servings INTEGER CHECK (servings IS NULL OR servings BETWEEN 1 AND 99)');
+      }
+    },
+  },
+  {
+    version: 271,
+    description: 'split expenses: budget category',
+    // Die Aufteilung nimmt die Kategorien des Budgets (R24, E12; Critique
+    // G4-Aufteilung-P2-6). Bis hier fuehrte sie eine eigene Liste von zwoelf
+    // Schluesseln (groceries, rent ...) mit Icon-Mulden neben den
+    // Budget-Kategorien mit Farbpunkt - zwei Codierungen fuer dieselbe Frage.
+    // `budget_category` ist der Schluessel aus budget_categories, NULL heisst
+    // "ohne Kategorie". Die alte Spalte `category` bleibt stehen: die
+    // /api/v1-Oberflaeche liefert und nimmt sie weiter (zugesagt), die
+    // Oberflaeche liest sie nicht mehr.
+    // Der Bestand wird uebertragen, wo ein Budget-Schluessel die Frage traegt;
+    // baby, pets und general haben keinen und bleiben ohne Kategorie, statt
+    // eine falsche zu behaupten. Ein Ziel, das ein Haushalt im Budget geloescht
+    // hat, wird nicht gesetzt. Bewacht (Spalte nur, wenn sie fehlt; nur leere
+    // Zellen), damit ein zweiter Lauf auf einer gedrifteten Datenbank weder
+    // scheitert noch eine spaetere Wahl ueberschreibt.
+    up(database) {
+      const map = [
+        ['groceries', 'food'], ['rent', 'housing'], ['utilities', 'housing'], ['home', 'housing'],
+        ['school', 'education'], ['travel', 'leisure'], ['subscriptions', 'leisure'],
+        ['shopping', 'shopping_clothing'], ['health', 'personal_health'],
+      ];
+      const hasBudgetCategories = database
+        .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'budget_categories'").get();
+      for (const table of ['expenses', 'recurring_expenses']) {
+        const cols = database.prepare(`PRAGMA table_info(${table})`).all();
+        if (!cols.length) continue;
+        if (!cols.some((c) => c.name === 'budget_category')) {
+          database.exec(`ALTER TABLE ${table} ADD COLUMN budget_category TEXT`);
+        }
+        if (!hasBudgetCategories) continue;
+        const update = database.prepare(`
+          UPDATE ${table} SET budget_category = @to
+           WHERE category = @from AND budget_category IS NULL
+             AND EXISTS (SELECT 1 FROM budget_categories WHERE key = @to AND type = 'expense')`);
+        for (const [from, to] of map) update.run({ from, to });
+      }
+    },
+  },
+  {
+    version: 272,
+    description: 'Documents: optional household member the document is about',
+    // Die Person, um die es in einem Dokument geht (#1705), getrennt von der
+    // Person, die es abgelegt hat. Sie entscheidet ueber Erinnerung und Filter,
+    // NIE darueber, wer das Dokument sieht (DECISIONS 1): `documentVisibleSql()`
+    // kennt die Spalte bewusst nicht. SET NULL, weil ein geloeschtes Konto dem
+    // Haushalt nicht den Pass nimmt. Bewacht, damit ein zweiter Lauf auf einer
+    // gedrifteten Datenbank nicht scheitert.
+    up(database) {
+      const cols = database.prepare('PRAGMA table_info(family_documents)').all();
+      if (!cols.some((col) => col.name === 'subject_user_id')) {
+        database.exec('ALTER TABLE family_documents ADD COLUMN subject_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL');
+      }
+      database.exec('CREATE INDEX IF NOT EXISTS idx_family_documents_subject ON family_documents(subject_user_id)');
+    },
+  },
+  {
+    version: 273,
+    description: 'ICS subscriptions: feed values kept for reset (D#2330), ETag cleared for backfill',
+    // Der Feed-Stand eines ICS-Termins (Titel, Beschreibung, Start, Ende, Ganztag,
+    // Ort, Farbe) als JSON. Jeder Sync schreibt ihn, auch an lokal geaenderte
+    // Termine, deren Felder der Sync nicht anfasst. Der Reset stellt daraus sofort
+    // und ohne Netz her. NULL heisst: der Feed-Stand ist noch nicht gespeichert.
+    //
+    // Altbestand: Abos, die vor dieser Migration gesynct wurden, haben keinen
+    // Feed-Stand. Ihr ETag (und Last-Modified) wird geleert, damit der naechste
+    // Abruf den vollen Feed (200) statt 304 ohne Text liefert und der Stand
+    // einmal vollstaendig geschrieben wird.
+    up(database) {
+      const cols = database.prepare('PRAGMA table_info(calendar_events)').all();
+      if (!cols.some((col) => col.name === 'feed_original')) {
+        database.exec('ALTER TABLE calendar_events ADD COLUMN feed_original TEXT');
+      }
+      database.exec('UPDATE ics_subscriptions SET etag = NULL, last_modified = NULL');
+    },
+  },
+  {
+    version: 274,
+    description: 'api_tokens: kind, platform, device_id for signed-in devices',
+    // Ein Telefon mit nativem Client ist ein angemeldetes Geraet: eine Person mit
+    // einem Device Credential. Es liegt in `api_tokens`, damit Widerruf beim
+    // Deaktivieren, die CSRF-Ausnahme und jede Pruefung auf `authMethod` von
+    // selbst gelten. `kind` trennt es von den Integrationen, die der Admin
+    // verwaltet. Der Index haelt: ein Telefon, ein gueltiges Credential.
+    up(database) {
+      const cols = database.prepare('PRAGMA table_info(api_tokens)').all();
+      if (!cols.some((col) => col.name === 'kind')) {
+        database.exec("ALTER TABLE api_tokens ADD COLUMN kind TEXT NOT NULL DEFAULT 'integration'");
+      }
+      if (!cols.some((col) => col.name === 'platform')) {
+        database.exec('ALTER TABLE api_tokens ADD COLUMN platform TEXT');
+      }
+      if (!cols.some((col) => col.name === 'device_id')) {
+        database.exec('ALTER TABLE api_tokens ADD COLUMN device_id TEXT');
+      }
+      database.exec(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_api_tokens_active_device
+          ON api_tokens (subject_user_id, device_id)
+          WHERE kind = 'device' AND revoked_at IS NULL
+      `);
+    },
+  },
+  {
+    version: 275,
+    description: 'device_pairing_codes: pairing a signed-in device',
+    // Der Code, mit dem eine Browser-Sitzung ein Telefon anmeldet. Eine eigene
+    // Tabelle: `display_pairing_codes` fragt beim Einloesen nicht nach dem Zweck,
+    // ein Personen-Code dort oeffnete `POST /displays/pair`. Gehasht und mit
+    // `used_at` statt Loeschen, aus denselben Gruenden wie dort.
+    up: `
+      CREATE TABLE IF NOT EXISTS device_pairing_codes (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        code_hash  TEXT    NOT NULL UNIQUE,
+        expires_at TEXT    NOT NULL,
+        used_at    TEXT,
+        created_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_device_pairing_codes_user
+        ON device_pairing_codes(user_id);
+    `,
+  },
+  {
+    version: 276,
+    description: 'Pantry: the minimum moves to the product, low and out are read over its total (#1448)',
+    // THE MINIMUM IS A STATEMENT ABOUT THE PRODUCT. Toothpaste with 1 in the
+    // bathroom and 8 in the attic and a minimum of 3 on the bathroom row read
+    // as low, although the household has 9. From here on low and out are read
+    // over the product: the sum of its batches against the product's minimum.
+    //
+    // THE BACKFILL TAKES THE HIGHEST MINIMUM OF A PRODUCT'S BATCHES (#1448,
+    // point 1): where batches of one product carry different minimums, the
+    // highest warns early rather than late. MAX() skips NULL, so a product
+    // whose batches carry no minimum, or that has no batch at all, keeps NULL.
+    //
+    // `pantry_items.min_quantity` STAYS. No destructive change: nothing reads it
+    // for low or out any more, the API returns the product's value in its place
+    // and writes a batch's `min_quantity` through to the product for the
+    // deprecation window (#1448, point 4). The previous version, started again
+    // on this database, still finds the column.
+    //
+    // Plain SQL, no runtime code. The trigger of pantry_products rests while the
+    // minimum is filled in and is created again with the wording of v253: a
+    // backfill is not an edit by anybody, so `updated_at` stays.
+    up: `
+      ALTER TABLE pantry_products ADD COLUMN min_quantity REAL;
+
+      DROP TRIGGER IF EXISTS trg_pantry_products_updated_at;
+      UPDATE pantry_products SET min_quantity = (
+        SELECT MAX(pi.min_quantity) FROM pantry_items pi WHERE pi.product_id = pantry_products.id
+      );
+      CREATE TRIGGER IF NOT EXISTS trg_pantry_products_updated_at
+        AFTER UPDATE ON pantry_products FOR EACH ROW
+        BEGIN UPDATE pantry_products SET updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = OLD.id; END;
+    `,
+  },
+  {
+    version: 277,
+    description: 'tasks: rotation for recurring series',
+    // Eine Serie "Muell rausbringen" haengt fuer immer an einer Person.
+    // Rotation ist eine reine Zustellungs-Entscheidung an der Folgeinstanz
+    // (die RRULE-Engine bleibt unangetastet): Modus, Pool und der Zeiger.
+    // Der Zeiger ist eine POSITION im Pool, kein Kopf: ein Mitglied, das den
+    // Pool verlaesst, verschiebt den Platz des Zeigers nicht, und die
+    // sichtbare Reihenfolge laeuft weiter (upstream #1763: "A pointer that
+    // survives"). rotation_last_user wandert als Information mit - die
+    // Reihenfolge liest es nie, genau das Lesen hat die Serie frueher beim
+    // Rauswurf still nach vorn zurueckgesetzt. Modus, Pool und Zeiger wandern
+    // als WERT auf jede Folgeinstanz (dasselbe Prinzip wie
+    // recurrence_series_id, #1603): faellt das Ursprungs-Vorkommen, traegt
+    // jede laufende Instanz ihre eigene Zuordnung weiter. Bewacht wie
+    // ueblich, damit ein zweiter Lauf auf gedrifteter Datenbank nicht
+    // scheitert.
+    up(database) {
+      const cols = database.prepare('PRAGMA table_info(tasks)').all();
+      if (!cols.some((c) => c.name === 'rotation_mode')) {
+        database.exec(`
+          ALTER TABLE tasks ADD COLUMN rotation_mode TEXT
+            CHECK (rotation_mode IS NULL OR rotation_mode IN ('round_robin'))
+        `);
+      }
+      if (!cols.some((c) => c.name === 'rotation_last_user')) {
+        database.exec('ALTER TABLE tasks ADD COLUMN rotation_last_user INTEGER REFERENCES users(id) ON DELETE SET NULL');
+      }
+      if (!cols.some((c) => c.name === 'rotation_last_position')) {
+        database.exec('ALTER TABLE tasks ADD COLUMN rotation_last_position INTEGER');
+      }
+      database.exec(`
+        CREATE TABLE IF NOT EXISTS task_rotation_pool (
+          task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+          user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          position INTEGER NOT NULL,
+          PRIMARY KEY (task_id, user_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_task_rotation_pool_order
+          ON task_rotation_pool(task_id, position);
+      `);
+    },
+  },
 ];
+
+/**
+ * Der Nachtrag aus Migration 259 (#1911): wartende Umzuege beginnen ihre
+ * Frist jetzt.
+ */
+function backfillShoppingMoveSince(database) {
+  database.exec(`
+    UPDATE shopping_items SET outbound_move_since = datetime('now')
+     WHERE outbound_move = 1 AND outbound_move_since IS NULL
+  `);
+}
 
 /**
  * Der Nachtrag zu Migration 246 (#1935): lokale Zeilen sind hier verfasst.
@@ -11602,6 +12220,15 @@ const CRITICAL_COLUMNS = [
   // Sofortversuch.
   { table: 'shopping_items', column: 'outbound_move', type: 'INTEGER NOT NULL DEFAULT 0' },
   { table: 'shopping_items', column: 'outbound_move_attempts', type: 'INTEGER NOT NULL DEFAULT 0' },
+  // #1911: v259 traegt den Beginn eines Umzugs nach; ohne die Spalte scheitert
+  // jeder Umzug eines gespiegelten Artikels (die Route schreibt sie) und jeder
+  // Lauf (er liest sie). MIT NACHTRAG: wartende Umzuege beginnen ihre Frist
+  // mit der Spalte, wie in der Migration.
+  { table: 'shopping_items', column: 'outbound_move_since', type: 'TEXT',
+    backfill: backfillShoppingMoveSince },
+  // #1912: v260 merkt sich, wer verschoben hat; die Route schreibt die Spalte
+  // bei jedem Umzug eines gespiegelten Artikels.
+  { table: 'shopping_items', column: 'outbound_move_by', type: 'INTEGER REFERENCES users(id) ON DELETE SET NULL' },
   // #1935: v246 traegt nach, wer Start und Regel eines Termins verfasst hat;
   // ohne die Spalte scheitert das Anlegen jedes Termins und jeder Abruf von
   // Google, CalDAV und iCloud (er liest sie, bevor er die Zeile anfasst).
@@ -11639,6 +12266,12 @@ const CRITICAL_COLUMNS = [
   { table: 'contacts', column: 'birthday_year_unknown',
     type: 'INTEGER NOT NULL DEFAULT 0 CHECK(birthday_year_unknown IN (0, 1))',
     backfill: backfillContactBirthdayYearUnknown },
+  // #1839: v266 traegt "gesehen" nach; ohne die Spalten scheitert jeder Prune
+  // von CalDAV und iCloud (er liest und schreibt sie) und jede Buchung eines
+  // Uploads. Kein Nachtrag: 0 ist der Stand, mit dem die Migration beginnt.
+  { table: 'calendar_events', column: 'seen_on_server', type: 'INTEGER NOT NULL DEFAULT 0' },
+  { table: 'tasks', column: 'seen_on_server', type: 'INTEGER NOT NULL DEFAULT 0' },
+  { table: 'shopping_items', column: 'seen_on_server', type: 'INTEGER NOT NULL DEFAULT 0' },
 ];
 
 /**

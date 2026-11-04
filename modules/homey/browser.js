@@ -2,27 +2,38 @@ import { t } from '/i18n.js';
 import {
   deviceClassIcon,
   formatNumericPinValue,
+  formatReading,
   ICON_CHOICES,
   isDisplayMode,
   suggestIcon,
+  usesHomeyIcon,
+  usesHomeyLabel,
 } from './pin-style.js';
 
 const API = '/api/extensions/homey';
 
-export { ICON_CHOICES, isDisplayMode, suggestIcon };
+export { ICON_CHOICES, isDisplayMode, suggestIcon, usesHomeyIcon, usesHomeyLabel };
 
 export function deviceIcon(deviceClass) {
   return deviceClassIcon(deviceClass);
 }
 
 export function pinIcon(pin) {
+  if (usesHomeyIcon(pin) && pin?.homeyIconId && pin?.iconUrl) return '';
   const custom = String(pin?.icon || '').trim();
   if (custom) return custom;
   return suggestIcon(pin?.capabilityId, pin?.deviceClass, pin?.kind);
 }
 
+export function pinIconUrl(pin) {
+  if (!usesHomeyIcon(pin)) return '';
+  return String(pin?.iconUrl || '').trim();
+}
+
 export function valueLabel(pin) {
   if (pin.unavailable) return t('extensions.homey.page.unavailable');
+  const reading = formatReading(pin?.reading);
+  if (reading) return reading;
   if (typeof pin.value === 'boolean') {
     return pin.value ? t('extensions.homey.page.on') : t('extensions.homey.page.off');
   }
@@ -31,6 +42,58 @@ export function valueLabel(pin) {
   if (pin.value == null || pin.value === '') return '';
   const units = pin.units ? ` ${pin.units}` : '';
   return `${pin.value}${units}`;
+}
+
+export function secondaryValueLabel(pin) {
+  if (pin.unavailable || !pin?.reading) return '';
+  if (typeof pin.value === 'boolean') {
+    return pin.value ? t('extensions.homey.page.on') : t('extensions.homey.page.off');
+  }
+  const numeric = formatNumericPinValue(pin);
+  if (numeric != null) {
+    const id = String(pin.capabilityId || '');
+    if (id === 'target_temperature' || id.startsWith('target_temperature')) {
+      return t('extensions.homey.page.setpoint', { value: numeric });
+    }
+    return numeric;
+  }
+  return '';
+}
+
+export function appendPinIcon(parent, pin) {
+  const url = pinIconUrl(pin);
+  if (url) {
+    const img = document.createElement('img');
+    img.className = 'homey-pin__glyph';
+    img.src = url;
+    img.alt = '';
+    img.decoding = 'async';
+    img.loading = 'lazy';
+    img.addEventListener('error', () => {
+      img.remove();
+      const fallback = pinIcon({ ...pin, iconMode: 'custom', iconUrl: '', homeyIconId: '' });
+      if (!fallback || !parent.isConnected) return;
+      const icon = document.createElement('i');
+      icon.dataset.lucide = fallback;
+      icon.setAttribute('aria-hidden', 'true');
+      parent.prepend(icon);
+      if (window.lucide) window.lucide.createIcons({ el: parent });
+    }, { once: true });
+    parent.append(img);
+    return;
+  }
+  const iconName = pinIcon(pin);
+  if (!iconName) return;
+  const icon = document.createElement('i');
+  icon.dataset.lucide = iconName;
+  icon.setAttribute('aria-hidden', 'true');
+  parent.append(icon);
+}
+
+export function iconChoiceLabel(name) {
+  const key = `extensions.homey.icons.${name}`;
+  const text = t(key);
+  return text === key ? name : text;
 }
 
 export function reasonMessage(reason, detail) {

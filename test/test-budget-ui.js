@@ -2686,8 +2686,8 @@ test('eingebettete Split-Ausgaben gliedern Gruppe und Karten eine Stufe tiefer',
     'die Karten stehen eingebettet unter dem Gruppennamen, also <h4>');
   assert.match(src, /<\$\{GroupTag\} class="split-group-name">/,
     'der Gruppenname muss über GroupTag gerendert werden');
-  assert.equal((src.match(/<\$\{SectionTag\} class="split-section-title u-section-title">/g) ?? []).length, 4,
-    'Salden, letzte Ausgaben, wiederkehrende Ausgaben (#1647) und Verlauf müssen über SectionTag gerendert werden');
+  assert.equal((src.match(/<\$\{SectionTag\} class="split-section-title u-section-title">/g) ?? []).length, 6,
+    'Salden, die Summen je Person und je Kategorie (#1888, #1941), letzte Ausgaben, wiederkehrende Ausgaben (#1647) und Verlauf müssen über SectionTag gerendert werden');
   // Fest geschriebene Ueberschriften nur im Kopf von render(), und dort je
   // Zweig genau passend: eingebettet die sr-only-<h2>, eigenstaendig die <h1>.
   const outsideHead = src.replace(/const head = embedded[\s\S]*?<\/header>`;/, '');
@@ -3136,6 +3136,26 @@ test('the transfer summary is conditional and stays outside the balance card gri
     if (!expensesOnly) assert.ok(balance > 0 && balance < transfers);
     else assert.equal(balance, -1);
   }
+});
+
+test('#2207: filtered to one account, the transfer card shows incoming and outgoing apart', () => {
+  const at = (html) => html.slice(html.indexOf('budget-transfer-summary'));
+  // Ohne Kontofilter: eine Zahl wie bisher, kein Eingang/Ausgang.
+  const unfiltered = uebersicht({ entries: [zeile()], summary: { ...summe, transfers: 120 } });
+  assert.match(unfiltered, /class="metric-card budget-transfer-summary"/);
+  assert.doesNotMatch(unfiltered, /summaryTransfersIn|budget-transfer-summary__flow/);
+  // Gefiltert, nur eingehend: die Karte erscheint trotz transfers = 0.
+  const nurEin = uebersicht({ entries: [zeile()], accountFilterId: 7, summary: { ...summe, transfers: 0, transfers_in: 500 } });
+  assert.match(nurEin, /class="metric-card budget-transfer-summary budget-transfer-summary--split"/);
+  // Beide Richtungen getrennt, Eingang vor Ausgang, mit Vorzeichen.
+  const beide = at(uebersicht({ entries: [zeile()], accountFilterId: 7, summary: { ...summe, transfers: 200, transfers_in: 500 } }));
+  const ein = beide.indexOf('summaryTransfersIn');
+  const aus = beide.indexOf('summaryTransfersOut');
+  assert.ok(ein > 0 && ein < aus, beide);
+  assert.match(beide.slice(ein, aus), /\+\D*500/);
+  assert.match(beide.slice(aus), /[-−]\D*200/);
+  // Gefiltert ohne Umbuchung: keine Karte.
+  assert.doesNotMatch(uebersicht({ entries: [zeile()], accountFilterId: 7, summary: { ...summe, transfers: 0, transfers_in: 0 } }), /budget-transfer-summary/);
 });
 
 test('transfer ledger rows are marked and show source to destination with a neutral amount', () => {
@@ -7607,7 +7627,7 @@ test('R22 D9: Konto, Abo und Ausgabe der Aufteilung beginnen mit derselben Lead-
   assert.match(read('../public/pages/budget.js'), /class="budget-account__icon budget-tile"/);
   assert.match(read('../public/pages/subscriptions.js'), /class="subscription-card__brand budget-tile"/);
   const split = read('../public/pages/split-expenses.js');
-  assert.equal((split.match(/class="split-expense__icon budget-tile"\$\{categoryTone\(/g) ?? []).length, 2, 'Ausgabe und Serie tragen den Ton ihrer Kategorie');
+  assert.equal((split.match(/class="split-expense__icon budget-tile"\$\{categoryTone\(/g) ?? []).length, 3, 'Ausgabe, Serie und Summe je Kategorie (#1941) tragen den Ton ihrer Kategorie');
   assert.equal((split.match(/class="split-group__avatar budget-tile"/g) ?? []).length, 2);
 });
 
