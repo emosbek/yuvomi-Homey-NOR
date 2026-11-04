@@ -82,22 +82,43 @@ fi
 # The gateway also loads only at start, so it must be recreated too.
 COMPOSE=(docker compose -f "${DEST}/modules/homey/compose.yml")
 "${COMPOSE[@]}" build yuvomi
-"${COMPOSE[@]}" up -d --remove-orphans --force-recreate
+if ! "${COMPOSE[@]}" up -d --remove-orphans --force-recreate; then
+  echo "docker compose up failed. Last Yuvomi logs:" >&2
+  "${COMPOSE[@]}" logs yuvomi --tail 120 >&2 || true
+  "${COMPOSE[@]}" ps >&2 || true
+  exit 1
+fi
 
-# Quiet wait: the gateway is a second behind `docker compose up`, and curl -S
-# would print "Failed to connect to 127.0.0.1 port 3000" on every attempt.
+# Quiet wait: Yuvomi is on :3001, the gateway on :3000. Schema migrations on a
+# Pi can take a couple of minutes after a big upgrade.
 ok=0
-for _ in $(seq 1 60); do
+for _ in $(seq 1 90); do
   if curl -fs --connect-timeout 1 "http://127.0.0.1:3000/health" >/dev/null 2>&1; then
     ok=1
     break
   fi
+  # If Yuvomi itself already died, stop waiting and show why.
+  yuvomi_status="$("${COMPOSE[@]}" ps yuvomi --format '{{.Status}}' 2>/dev/null || true)"
+  case "$yuvomi_status" in
+    *Exit*|*exited*|*Dead*|*dead*)
+      echo "Yuvomi container stopped during startup (${yuvomi_status})." >&2
+      break
+      ;;
+  esac
   sleep 2
 done
 
 if [ "$ok" -ne 1 ]; then
-  echo "Containers are up, but http://127.0.0.1:3000/health has not answered yet." >&2
-  echo "Logs: docker compose -f ${DEST}/modules/homey/compose.yml logs" >&2
+  echo "Yuvomi/gateway did not answer http://127.0.0.1:3000/health in time." >&2
+  echo "--- compose ps ---" >&2
+  "${COMPOSE[@]}" ps >&2 || true
+  echo "--- yuvomi logs (last 120) ---" >&2
+  "${COMPOSE[@]}" logs yuvomi --tail 120 >&2 || true
+  echo "--- homey gateway logs (last 40) ---" >&2
+  "${COMPOSE[@]}" logs homey --tail 40 >&2 || true
+  echo "Direct Yuvomi health (host :3001):" >&2
+  curl -sS -m 3 "http://127.0.0.1:3001/health" >&2 || true
+  echo >&2
   exit 1
 fi
 
