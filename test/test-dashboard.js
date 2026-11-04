@@ -836,6 +836,42 @@ test('Heute-Blatt: die wartende Freigabe spricht nur zu Admins', async () => {
   });
 });
 
+test('Heute-Blatt: Kids Chores stehen als klickbare Zeilen (Kein-Echo zur Kachel)', async () => {
+  const kidsChores = {
+    access: 'write',
+    open: [{ id: 'chore-1', title: 'Feed the dog', points: 2 }],
+    items: [{ id: 'chore-1', title: 'Feed the dog', points: 2, done: false }],
+    settings: { displayTitle: 'Emma' },
+    allDone: false,
+  };
+  const data = { upcomingEvents: [eveningEvent()], kidsChores };
+  await withSheetEnv({ perms: { admin: true } }, (__test) => {
+    const model = __test.buildTodayCockpitModel(data, [], { now: todayAt(9) });
+    nodeAssert.ok(sheetKinds(model).includes('kids-chore'), `Kids Chores im Blatt, erhalten: ${sheetKinds(model)}`);
+    const row = model.rows.find((r) => r.kind === 'kids-chore');
+    nodeAssert.equal(row.objectId, 'chore-1');
+    nodeAssert.equal(row.canComplete, true);
+    nodeAssert.equal(row.sub, 'Emma');
+    const html = __test.renderTodayCockpit(data, [], false, { now: todayAt(9) });
+    nodeAssert.match(html, /data-object-kind="kids-chore"/);
+    nodeAssert.match(html, /data-object-id="chore-1"/);
+    nodeAssert.match(html, /<button type="button"[^>]*data-object-kind="kids-chore"/);
+
+    const echoed = __test.buildTodayCockpitModel(
+      data,
+      [{ id: 'kids-chores:today', visible: true }],
+      { now: todayAt(9) },
+    );
+    nodeAssert.ok(!sheetKinds(echoed).includes('kids-chore'), 'sichtbare Kachel = kein Echo im Blatt');
+
+    const wall = __test.buildTodayCockpitModel(data, [], {
+      now: todayAt(9),
+      sheetKidsChores: false,
+    });
+    nodeAssert.ok(!sheetKinds(wall).includes('kids-chore'), 'Wand-Programm laesst Kids Chores der eigenen Tafel');
+  });
+});
+
 /* DIE SICHT KOMMT VOM SERVER (Integration 2026-09-23, a2 x a8). Seit der
  * Belohnungs-Umbau liefert /dashboard `rewards.pending` je Sicht: `approver`
  * zaehlt alle offenen Anfragen, `self` nur die EIGENEN des Kindes. Die

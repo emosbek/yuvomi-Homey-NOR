@@ -367,6 +367,50 @@ export const TODAY_SHEET_SOURCES = [
       }];
     },
   },
+  {
+    // Kids Chores (drop-in): offene Tagesaufgaben. Modul-Id und Rechtsschluessel
+    // weichen voneinander ab (`kids-chores` vs `ext:kids-chores`), deshalb
+    // `allowed` statt `module`. Kein Echo zur Overview-Kachel
+    // (`kids-chores:today`). Die Wand baut ihre eigene Tafel und setzt
+    // `sheetKidsChores: false`, damit dieselben Zeilen dort nicht noch einmal
+    // im Programm stehen.
+    id: 'kids-chores',
+    widget: 'kids-chores:today',
+    settled: (data) => {
+      const kc = data?.kidsChores;
+      return Boolean(kc?.items?.length && kc.allDone);
+    },
+    allowed(ctx) {
+      if (ctx.sheetKidsChores === false) return false;
+      if (typeof window !== 'undefined' && window.yuvomi?.isModuleDisabled?.('kids-chores')) {
+        return false;
+      }
+      return moduleAccess('ext:kids-chores') !== 'none';
+    },
+    collect(data) {
+      const kc = data?.kidsChores;
+      const open = Array.isArray(kc?.open) ? kc.open : [];
+      if (!open.length) return [];
+      const custom = String(kc?.settings?.displayTitle || '').trim();
+      const sub = custom || t('extensions.kids-chores.widgets.today');
+      const canComplete = kc?.access === 'write';
+      return open.map((item) => ({
+        kind: 'kids-chore',
+        objectId: item.id,
+        sortKey: SORT_TODAY,
+        timeLabel: '',
+        title: item.title,
+        sub,
+        icon: 'sparkles',
+        tone: 'kids-chores',
+        route: '/m/kids-chores',
+        who: null,
+        priority: 18,
+        open: true,
+        canComplete,
+      }));
+    },
+  },
 ];
 
 /**
@@ -398,6 +442,7 @@ export function todaySheetContext({
   canSeeWidget = canSeeWidgetDefault,
   existing = [],
   isDisplay = false,
+  sheetKidsChores = true,
 } = {}) {
   const widgetShown = (id) => Array.isArray(cfg) && cfg.some((w) => w.id === id && w.visible);
   // Zwei Achsen, wie ueberall (#467): der Haushaltsschalter des Moduls und das
@@ -412,7 +457,10 @@ export function todaySheetContext({
     if (isDisplay && WALL_DISPLAY_MODULES.has(module)) return false;
     return moduleAccess(module) === 'none';
   };
-  return { todayKey, tomorrowKey, nowTime, isAdmin, viewer, moduleOff, canSeeWidget, widgetShown, existing };
+  return {
+    todayKey, tomorrowKey, nowTime, isAdmin, viewer, moduleOff, canSeeWidget, widgetShown, existing,
+    sheetKidsChores,
+  };
 }
 
 /** Die Zeilen aller sprechenden Quellen, plus ob eine davon „heute erledigt" meldet. */

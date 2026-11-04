@@ -55,9 +55,11 @@ services:
       YUVOMI_UPSTREAM: http://127.0.0.1:3001
       YUVOMI_INTERNAL_URL: http://127.0.0.1:3001
       HOMEY_DATA_DIR: /opt/yuvomi/data/homey
+      KIDS_CHORES_DATA_DIR: /opt/yuvomi/data/kids-chores
     volumes:
       - ../..:/opt/yuvomi:ro
       - ../../data/homey:/opt/yuvomi/data/homey
+      - ../../data/kids-chores:/opt/yuvomi/data/kids-chores
     working_dir: /opt/yuvomi
     command: ["node", "modules/homey/gateway.js"]
     logging:

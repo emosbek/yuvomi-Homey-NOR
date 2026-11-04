@@ -1,0 +1,46 @@
+{
+  "manifestVersion": 1,
+  "id": "kids-chores",
+  "name": "Kids Chores",
+  "version": "1.0.0",
+  "description": "Weekly kid chores with points, a progress sun on Overview, and a webhook when the daily goal is reached.",
+  "entry": "index.js",
+  "style": "style.css",
+  "settings": {
+    "entry": "settings.js",
+    "sections": ["household"],
+    "labelKey": "settings.title"
+  },
+  "icon": "sparkles",
+  "accent": "#EA580C",
+  "menu": {
+    "show": true,
+    "label": "Kids Chores",
+    "labelKey": "menu",
+    "icon": "sparkles",
+    "order": 55
+  },
+  "page": {
+    "composition": "dashboard",
+    "width": "wide",
+    "navigation": "standard",
+    "responsive": "standard"
+  },
+  "i18n": { "defaultLocale": "en" },
+  "capabilities": {
+    "permissions": {
+      "module": { "label": "Kids Chores", "labelKey": "module", "icon": "sparkles" },
+      "widgets": [{ "id": "today", "label": "Kids Chores", "labelKey": "widgets.today" }]
+    },
+    "widgets": [{
+      "id": "today",
+      "entry": "widgets/today.js",
+      "label": "Kids Chores",
+      "labelKey": "widgets.today",
+      "icon": "sparkles",
+      "defaultSize": "2x2",
+      "defaultVisible": true
+    }],
+    "api": { "prefix": "/api/extensions/kids-chores" }
+  }
+}
