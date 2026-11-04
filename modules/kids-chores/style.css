@@ -464,3 +464,34 @@
 [data-wall-night] .kc-wall__chore + .kc-wall__chore {
   border-top-color: color-mix(in srgb, var(--color-border-subtle, #fff) 40%, transparent);
 }
+
+.kc-wall__chore-wrap {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.kc-wall__chore--action {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+
+.kc-wall__chore--action:hover,
+.kc-wall__chore--action:focus-visible {
+  background: color-mix(in srgb, var(--seal-accent, #EA580C) 10%, transparent);
+}
+
+.kc-wall__chore--action:focus-visible {
+  outline: 2px solid var(--seal-accent, #EA580C);
+  outline-offset: -2px;
+}
+
+.kc-wall__chore--action:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

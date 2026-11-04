@@ -12,7 +12,8 @@ Most of the module lives under `modules/kids-chores/`. Wall/full-screen support 
 - Points add up toward a daily goal. The overview mark fills solid with colour by percentage; at 100% it is fully filled.
 - When the goal is reached once per day, the sidecar can POST a JSON webhook (Homey / Home Assistant) and leave an admin notice inside the module.
 - When every chore for today is done, the configured congratulation message is shown.
-- Optional **Show on wall / full screen** switch: when on and today has chores, the household wall lists them beside Who / Weather.
+- Open chores also appear under **Today at a glance** (unless the overview widget is already visible — no echo). Tap a row to mark it done.
+- Optional **Show on wall / full screen** switch: when on and today has chores, the household wall lists them beside Who / Weather (also tappable to complete).
 
 ## Install on this fork (Raspberry Pi)
 

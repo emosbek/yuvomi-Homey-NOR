@@ -3911,6 +3911,9 @@ function renderTodayRow(row, extraClass = '') {
   // Verdrahtung auseinander, bekommt eine Zeile einen href und trotzdem das
   // Modal.
   const opensModal = row.kind === 'task' && row.objectId != null;
+  // Kids Chores: tippen loest die Aufgabe ein (wie die Overview-Kachel), statt
+  // nur zur Modulseite zu navigieren. Ohne Schreibrecht bleibt der Link.
+  const completesKidsChore = row.kind === 'kids-chore' && row.objectId != null && row.canComplete === true;
   // Inset-Grouped-Zeile (Apple-Systemapp-Muster): das Markensiegel traegt
   // die Modulzugehoerigkeit (Herkunfts-Regel, Block 2), der Inhalt steht als
   // Titel in Textfarbe, das Modul-Label lebt als ruhiger Untertitel weiter
@@ -3930,7 +3933,7 @@ function renderTodayRow(row, extraClass = '') {
       ${time}
   `;
   const attrs = `class="today-cockpit-card today-cockpit-card--${esc(row.tone)}${extraClass}" data-route="${esc(row.route)}"${objectAttrs}`;
-  return opensModal
+  return (opensModal || completesKidsChore)
     ? `<button type="button" ${attrs}>${inner}</button>`
     : `<a href="${esc(row.route)}" ${attrs}>${inner}</a>`;
 }
@@ -4161,7 +4164,7 @@ function groupOverdueRows(rows) {
  *            shopping: object|null, coda: string|null}}
  */
 /** Der Blatt-Kontext - Cockpit, Wand und Kennzahlreihe fragen denselben. */
-function todaySheetContextFor(cfg, now, existing = [], { isDisplay = false } = {}) {
+function todaySheetContextFor(cfg, now, existing = [], { isDisplay = false, sheetKidsChores = true } = {}) {
   const todayKey = zonedDateKey(now);
   return todaySheetContext({
     todayKey,
@@ -4171,6 +4174,7 @@ function todaySheetContextFor(cfg, now, existing = [], { isDisplay = false } = {
     isModuleDisabled: (module) => Boolean(window.yuvomi?.isModuleDisabled(module)),
     existing,
     isDisplay,
+    sheetKidsChores,
   });
 }
 
@@ -4185,6 +4189,7 @@ function buildTodayCockpitModel(data, cfg = [], {
   groupOverdue = onPhoneStage(),
   isDisplay = false,
   viewer = dashboardViewer,
+  sheetKidsChores = true,
 } = {}) {
   // Kein Echo: ist das Modul-Widget einer Domäne sichtbar, entfallen ihre
   // Programm-Zeilen — jede Domäne hat genau eine Repräsentation (Cockpit ODER
@@ -4204,7 +4209,9 @@ function buildTodayCockpitModel(data, cfg = [], {
   // in utils/today-sheet.js - mit denselben drei Riegeln wie oben
   // (Modulschalter, Recht, Kein-Echo) und derselben Zeilenform. Cockpit und
   // Wand fragen beide hier; die Wand reicht nur keine Kachel-Konfiguration mit.
-  const sheetContext = todaySheetContextFor(cfg, now, program.rows, { isDisplay });
+  // Kids Chores: nur im Heute-Blatt (sheetKidsChores); die Wand hat ihre eigene
+  // Tafel hinter dem Admin-Schalter und wuerde sonst dieselben Zeilen doppelt.
+  const sheetContext = todaySheetContextFor(cfg, now, program.rows, { isDisplay, sheetKidsChores });
   const contributed = collectSourceRows(data, sheetContext);
   const programRows = groupOverdue ? groupOverdueRows(program.rows) : program.rows;
   const sheet = composeTodaySheet([...programRows, ...contributed.rows], { cap });
@@ -6670,7 +6677,7 @@ function fitWallWho(root, data, { now = new Date(), reset = false, isDisplay = f
   if (!reset && !overflows()) return 0;
 
   // `allRows` haengt nicht am Deckel, der Timer spielt hier also keine Rolle.
-  const model = buildTodayCockpitModel(data, [], { cap: WALL_ROW_CAP, now, groupOverdue: false });
+  const model = buildTodayCockpitModel(data, [], { cap: WALL_ROW_CAP, now, groupOverdue: false, sheetKidsChores: false });
   const place = (step) => {
     const section = wall.querySelector('.wall__who');
     if (!section) return false;
@@ -6750,7 +6757,7 @@ function shedWallProgram(wall, data, overflows, { now = new Date(), isDisplay = 
   let shed = 0;
   while (rows > 2 && overflows()) {
     rows -= 1;
-    const model = buildTodayCockpitModel(data, [], { cap: rows, now, groupOverdue: false, isDisplay });
+    const model = buildTodayCockpitModel(data, [], { cap: rows, now, groupOverdue: false, isDisplay, sheetKidsChores: false });
     section.insertAdjacentHTML('afterend', renderWallProgram(model));
     const next = section.nextElementSibling;
     section.remove();
@@ -6962,7 +6969,7 @@ function renderWallSurface(data, weather, { failed = false, loading = false, upd
   // weniger, und „+N weitere" zaehlt sie mit. Der Start und das Ende rufen
   // ohnehin `rerender()` (wall-timer.js), der Deckel folgt also von selbst.
   const cap = timer.display ? WALL_ROW_CAP - 1 : WALL_ROW_CAP;
-  const model = failed || loading ? null : buildTodayCockpitModel(data, [], { cap, now, groupOverdue: false, isDisplay });
+  const model = failed || loading ? null : buildTodayCockpitModel(data, [], { cap, now, groupOverdue: false, isDisplay, sheetKidsChores: false });
 
   let main;
   if (failed) {
@@ -7338,6 +7345,27 @@ async function openTaskFromOverview(taskId, container, refresh, user) {
   }
 }
 
+/** Kids Chores from Today-at-a-glance: same complete path as the overview widget. */
+async function completeKidsChoreFromOverview(choreId, refresh) {
+  try {
+    const { choresApi } = await import('/api/v1/modules/assets/kids-chores/browser.js');
+    const next = await choresApi('/complete', {
+      method: 'POST',
+      body: { id: choreId },
+    });
+    if (next.goalReached) {
+      window.yuvomi?.showToast(t('extensions.kids-chores.page.goalReached'), 'success');
+    }
+    await refresh?.();
+  } catch (err) {
+    console.error('[Dashboard] Kids Chore konnte nicht abgeschlossen werden:', err);
+    window.yuvomi?.showToast(
+      err?.message || t('extensions.kids-chores.reason.invalid'),
+      'danger',
+    );
+  }
+}
+
 /**
  * Der Termin hinter einer Kalender-Adresse (`/calendar?open=<id>&date=..`) -
  * oder null. Heute-Blatt, Termin-Kachel und Countdown nennen ihren Termin so.
@@ -7416,6 +7444,17 @@ function wireLinks(container, refresh, { editing = false, user = null } = {}) {
       el.addEventListener('click', show);
       el.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); show(); }
+      });
+      return;
+    }
+    if (!editing && el.dataset.objectKind === 'kids-chore' && el.dataset.objectId) {
+      const done = () => completeKidsChoreFromOverview(el.dataset.objectId, refresh);
+      el.addEventListener('click', (e) => {
+        e.preventDefault();
+        done();
+      });
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); done(); }
       });
       return;
     }
@@ -7961,6 +8000,25 @@ export async function render(container, { user, signal: routeSignal = null } = {
     }
   }
 
+  // Kids Chores: sidecar-API, nicht /dashboard. Fuellt das Heute-Blatt und die
+  // Wand-Tafel; ohne Modul oder ohne Recht bleibt der Slice null.
+  async function ensureKidsChoresSlice() {
+    if (data.kidsChores !== undefined) return;
+    const modules = getExtensionModules();
+    const enabled = modules.some((m) => m?.id === 'kids-chores' && m.enabled && m.status === 'enabled');
+    if (!enabled || window.yuvomi?.isModuleDisabled('kids-chores')) {
+      data.kidsChores = null;
+      return;
+    }
+    try {
+      const { choresApi } = await import('/api/v1/modules/assets/kids-chores/browser.js');
+      data.kidsChores = await choresApi('/today');
+    } catch (err) {
+      console.error('[Dashboard] Kids Chores-Slice Ladefehler:', err);
+      data.kidsChores = null;
+    }
+  }
+
   // Nur wenn die opt-in-Kachel sichtbar ist — die Mehrheit ohne aktivierte Kachel
   // löst keinen Request aus.
   if (!loadFailed && widgetConfig.some((w) => w.id === 'cycle' && w.visible)) {
@@ -7971,6 +8029,9 @@ export async function render(container, { user, signal: routeSignal = null } = {
   }
   if (!loadFailed && widgetConfig.some((w) => w.id === 'waste' && w.visible)) {
     await ensureWasteSlice();
+  }
+  if (!loadFailed) {
+    await ensureKidsChoresSlice();
   }
   // Auch die Nachlade-Runden koennen von einem Verlassen oder Neuaufbau
   // ueberholt worden sein (#977).
@@ -8850,6 +8911,10 @@ export async function render(container, { user, signal: routeSignal = null } = {
         if (signal.aborted) return;
       }
       fresh.waste = data.waste;
+      data.kidsChores = undefined;
+      await ensureKidsChoresSlice();
+      if (signal.aborted) return;
+      fresh.kidsChores = data.kidsChores;
       fresh.pendingReminders = pendingReminders;
       const unchanged = before !== null && overviewSignature(fresh) === before;
       data = fresh;

@@ -3270,6 +3270,7 @@ button.today-cockpit__more--link {
 .today-cockpit-card--inventory    { --today-card-accent: var(--module-inventory); }
 .today-cockpit-card--documents    { --today-card-accent: var(--module-documents); }
 .today-cockpit-card--pantry       { --today-card-accent: var(--module-pantry); }
+.today-cockpit-card--kids-chores  { --today-card-accent: #EA580C; }
 
 /* Die Zeilen des Programms als eigene Liste im Traeger: Mehr-Zeile, Einkauf und
  * Coda stehen darunter ueber die volle Breite, auch wenn die Zeilen sich auf
@@ -6499,6 +6500,7 @@ button.today-cockpit__more--link {
 .wall-row--inventory    { --wall-row-accent: var(--module-inventory); }
 .wall-row--documents    { --wall-row-accent: var(--module-documents); }
 .wall-row--pantry       { --wall-row-accent: var(--module-pantry); }
+.wall-row--kids-chores  { --wall-row-accent: #EA580C; }
 
 /* Überlauf („+N weitere") und Coda („danach nichts mehr") sprechen als eine
  * ruhige Fußzeile UNTER dem Träger - sie erzählen zu Ende, sie sind keine
