@@ -58,7 +58,7 @@
   "settings.choreDays": "Ukedager",
   "settings.choreWebhook": "Webhook ved ferdig (Yes)",
   "settings.choreWebhookPlaceholder": "f.eks. varsle når ferdig (gå med hunden, kommer hjem)",
-  "settings.choreWebhookHint": "Valgfritt. Sendes som {\"state\":\"yes\",\"done\":true} når oppgaven markeres som ferdig.",
+  "settings.choreWebhookHint": "Valgfritt. Ved ferdig sendes forespørsel hit først. Positivt svar (f.eks. {\"ok\":true} / {\"state\":\"yes\"} / HTTP 200) fullfører oppgaven. Negativt svar ({\"ok\":false}, {\"state\":\"no\"}, negativt tall, HTTP 4xx/5xx) hindrer innløsning.",
   "settings.choreResetWebhook": "Webhook ved nullstilling (No)",
   "settings.choreResetWebhookPlaceholder": "f.eks. varsle ved nullstilling (ikke ferdig)",
   "settings.choreResetWebhookHint": "Valgfritt. Sendes som {\"state\":\"no\",\"done\":false} når «Nullstill i dag» nullstiller oppgaven.",
@@ -83,5 +83,6 @@
   "reason.day": "Den oppgaven er ikke planlagt i dag.",
   "reason.limit": "For mange oppgaver.",
   "reason.webhook": "Webhook er ikke satt opp eller svarte ikke.",
+  "reason.webhook_denied": "Oppgaven ble ikke godkjent av mottakersystemet.",
   "reason.upstream": "Yuvomi svarte ikke."
 }

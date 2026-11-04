@@ -4,7 +4,7 @@ import http from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { createKidsChoresServer } from '../sidecar/server.js';
+import { createKidsChoresServer, interpretWebhookApproval } from '../sidecar/server.js';
 import { createStore, localDateKey, localIsoWeekday } from '../sidecar/store.js';
 
 /** Mirrors modules/kids-chores/browser.js maxDailyPoints for Node tests. */
@@ -398,7 +398,8 @@ test('API fires reset (No) webhooks when admin resets today', async () => {
     assert.equal(done.status, 200, JSON.stringify(done.body));
     assert.equal(done.body.choreWebhookSent, true);
     assert.equal(hooks[0].path, '/yes');
-    assert.deepEqual(hooks[0].body, { state: 'yes', done: true });
+    assert.equal(hooks[0].body.state, 'yes');
+    assert.equal(hooks[0].body.done, true);
 
     const reset = await call(base, '/api/extensions/kids-chores/reset-today', {
       method: 'POST',
@@ -412,7 +413,8 @@ test('API fires reset (No) webhooks when admin resets today', async () => {
     assert.equal(reset.body.resetWebhooksSent, 1);
     assert.equal(hooks.length, 2);
     assert.equal(hooks[1].path, '/no');
-    assert.deepEqual(hooks[1].body, { state: 'no', done: false });
+    assert.equal(hooks[1].body.state, 'no');
+    assert.equal(hooks[1].body.done, false);
 
     await close(server);
   } finally {
@@ -480,6 +482,74 @@ test('API test-webhook sends yes/no payloads', async () => {
   }
 });
 
+test('interpretWebhookApproval treats negative replies as denied', () => {
+  assert.equal(interpretWebhookApproval(true, null), true);
+  assert.equal(interpretWebhookApproval(true, { ok: true }), true);
+  assert.equal(interpretWebhookApproval(true, { state: 'yes' }), true);
+  assert.equal(interpretWebhookApproval(true, { ok: false }), false);
+  assert.equal(interpretWebhookApproval(true, { state: 'no' }), false);
+  assert.equal(interpretWebhookApproval(true, { approved: false }), false);
+  assert.equal(interpretWebhookApproval(true, -1), false);
+  assert.equal(interpretWebhookApproval(true, 0), false);
+  assert.equal(interpretWebhookApproval(true, 1), true);
+  assert.equal(interpretWebhookApproval(false, { ok: true }), false);
+});
+
+test('API blocks chore completion when webhook returns negative', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'kc-'));
+  const webhook = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: false, state: 'no' }));
+  });
+  const me = startMe((_req, res) => admin(res));
+  try {
+    const meUrl = await listen(me);
+    const hookUrl = await listen(webhook);
+    const fixed = new Date('2026-11-03T10:00:00Z');
+    const server = createKidsChoresServer({
+      dataDir: dir,
+      yuvomiUrl: meUrl,
+      now: () => fixed,
+    });
+    const base = await listen(server);
+    const first = await call(base, '/api/extensions/kids-chores/today', { cookie: 'yuvomi.sid=ok' });
+    const jar = `yuvomi.sid=ok; ${first.cookie}`;
+    const csrf = first.body.csrfToken;
+
+    const created = await call(base, '/api/extensions/kids-chores/chores', {
+      method: 'POST',
+      cookie: jar,
+      csrf,
+      json: {
+        title: 'Walk the dog',
+        points: 2,
+        days: [1, 2, 3, 4, 5],
+        webhookUrl: `${hookUrl}/gate`,
+      },
+    });
+    const choreId = created.body.chores[0].id;
+
+    const done = await call(base, '/api/extensions/kids-chores/complete', {
+      method: 'POST',
+      cookie: jar,
+      csrf,
+      json: { id: choreId },
+    });
+    assert.equal(done.status, 409, JSON.stringify(done.body));
+    assert.equal(done.body.reason, 'webhook_denied');
+
+    const today = await call(base, '/api/extensions/kids-chores/today', { cookie: jar });
+    assert.equal(today.body.items[0].done, false);
+    assert.equal(today.body.earned, 0);
+
+    await close(server);
+  } finally {
+    await close(me);
+    await close(webhook);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('API fires per-chore webhook when a chore is completed', async () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'kc-'));
   const hooks = [];
@@ -535,7 +605,8 @@ test('API fires per-chore webhook when a chore is completed', async () => {
     assert.equal(done.body.choreWebhookSent, true);
     assert.equal(hooks.length, 1);
     assert.equal(hooks[0].path, '/dog');
-    assert.deepEqual(hooks[0].body, { state: 'yes', done: true });
+    assert.equal(hooks[0].body.state, 'yes');
+    assert.equal(hooks[0].body.done, true);
 
     const again = await call(base, '/api/extensions/kids-chores/complete', {
       method: 'POST',

@@ -98,17 +98,63 @@ function originAllowed(req) {
   return Boolean(expected) && host === expected;
 }
 
+/** Interpret Homey/HA-style approval from status + optional JSON/text body. */
+export function interpretWebhookApproval(statusOk, data) {
+  if (!statusOk) return false;
+  if (data == null || data === '') return true;
+  if (typeof data === 'boolean') return data;
+  if (typeof data === 'number') return data > 0;
+  if (typeof data === 'string') {
+    const s = data.trim().toLowerCase();
+    if (!s) return true;
+    if (['no', 'false', '0', 'deny', 'denied', 'reject', 'rejected', 'neg', 'negative'].includes(s)) {
+      return false;
+    }
+    if (['yes', 'true', '1', 'ok', 'allow', 'allowed', 'approve', 'approved', 'pos', 'positive'].includes(s)) {
+      return true;
+    }
+    return true;
+  }
+  if (typeof data === 'object') {
+    if (
+      data.approved === false
+      || data.ok === false
+      || data.allow === false
+      || data.done === false
+      || data.denied === true
+      || data.rejected === true
+      || data.state === 'no'
+      || data.value === false
+      || (typeof data.value === 'number' && data.value <= 0)
+    ) {
+      return false;
+    }
+    if (
+      data.approved === true
+      || data.ok === true
+      || data.allow === true
+      || data.done === true
+      || data.state === 'yes'
+      || data.value === true
+      || (typeof data.value === 'number' && data.value > 0)
+    ) {
+      return true;
+    }
+  }
+  return true;
+}
+
 function postWebhook(url, payload) {
   return new Promise((resolve) => {
     let parsed;
     try {
       parsed = new URL(url);
     } catch {
-      resolve({ ok: false, reason: 'url' });
+      resolve({ ok: false, approved: false, reason: 'url' });
       return;
     }
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      resolve({ ok: false, reason: 'url' });
+      resolve({ ok: false, approved: false, reason: 'url' });
       return;
     }
     const body = JSON.stringify(payload);
@@ -120,16 +166,38 @@ function postWebhook(url, payload) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        Accept: 'application/json, text/plain, */*',
         'Content-Length': Buffer.byteLength(body),
         'User-Agent': 'yuvomi-kids-chores/1.0',
       },
       timeout: 8000,
     }, (res) => {
-      res.resume();
-      resolve({ ok: res.statusCode >= 200 && res.statusCode < 300, status: res.statusCode });
+      const chunks = [];
+      res.on('data', (chunk) => chunks.push(chunk));
+      res.on('end', () => {
+        const text = Buffer.concat(chunks).toString('utf8').trim();
+        let data = null;
+        if (text) {
+          try {
+            data = JSON.parse(text);
+          } catch {
+            data = text;
+          }
+        }
+        const statusOk = res.statusCode >= 200 && res.statusCode < 300;
+        resolve({
+          ok: statusOk,
+          approved: interpretWebhookApproval(statusOk, data),
+          status: res.statusCode,
+          data,
+        });
+      });
     });
-    req.on('timeout', () => { req.destroy(); resolve({ ok: false, reason: 'timeout' }); });
-    req.on('error', () => resolve({ ok: false, reason: 'network' }));
+    req.on('timeout', () => {
+      req.destroy();
+      resolve({ ok: false, approved: false, reason: 'timeout' });
+    });
+    req.on('error', () => resolve({ ok: false, approved: false, reason: 'network' }));
     req.end(body);
   });
 }
@@ -322,25 +390,61 @@ export function createKidsChoresHandler({
         const body = await readBody(req);
         const id = String(body?.id || '');
         if (!ID_RE.test(id)) throw new HttpError(400, 'invalid', 'Chore id is invalid.');
-        let completeMeta;
+
+        const settings = store.snapshot().settings;
+        const at = now();
+        const dateKey = localDateKey(settings.timezone || 'Europe/Oslo', at);
+        const weekday = localIsoWeekday(settings.timezone || 'Europe/Oslo', at);
+        const chore = store.listChores().find((c) => c.id === id && c.active !== false);
+        if (!chore) throw new HttpError(404, 'missing', 'Chore not found.');
+        if (!chore.days.includes(weekday)) {
+          throw new HttpError(400, 'day', 'Not scheduled today.');
+        }
+        const alreadyDone = Boolean(store.snapshot().completions[dateKey]?.[id]);
+        if (alreadyDone) {
+          reply(req, res, 200, {
+            ok: true,
+            ...todayBundle(store, at),
+            choreWebhookSent: false,
+            access,
+            role: session.role,
+          });
+          return;
+        }
+
+        let choreWebhookSent = false;
+        if (chore.webhookUrl) {
+          /* Ask the remote system first — negative/denied reply blocks completion. */
+          const result = await postWebhook(chore.webhookUrl, {
+            state: 'yes',
+            done: true,
+            event: 'kids_chores.chore_completed',
+            module: 'kids-chores',
+            date: dateKey,
+            choreId: chore.id,
+            title: chore.title,
+            points: chore.points,
+            timezone: settings.timezone,
+            triggeredBy: session?.displayName || session?.id || null,
+          });
+          if (!result.approved) {
+            throw new HttpError(
+              409,
+              'webhook_denied',
+              'Remote webhook rejected this chore completion.',
+            );
+          }
+          choreWebhookSent = true;
+        }
+
         try {
-          completeMeta = await store.completeChore(id, session.id, now());
+          await store.completeChore(id, session.id, at);
         } catch (err) {
           if (err.code === 'missing') throw new HttpError(404, 'missing', err.message);
           if (err.code === 'day') throw new HttpError(400, 'day', err.message);
           throw err;
         }
-        let choreWebhookSent = false;
-        if (completeMeta?.newlyCompleted && completeMeta.chore?.webhookUrl) {
-          const chore = completeMeta.chore;
-          const settings = store.snapshot().settings;
-          const result = await postWebhook(chore.webhookUrl, {
-            state: 'yes',
-            done: true,
-          });
-          choreWebhookSent = result.ok === true;
-        }
-        const bundle = await maybeFireGoal(store, session, now());
+        const bundle = await maybeFireGoal(store, session, at);
         reply(req, res, 200, {
           ok: true,
           ...bundle,

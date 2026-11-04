@@ -58,7 +58,7 @@
   "settings.choreDays": "Weekdays",
   "settings.choreWebhook": "Webhook when done (Yes)",
   "settings.choreWebhookPlaceholder": "e.g. notify when done (walking the dog, arrives home)",
-  "settings.choreWebhookHint": "Optional. Sent as {\"state\":\"yes\",\"done\":true} when the chore is marked done.",
+  "settings.choreWebhookHint": "Optional. On complete, this URL is asked first. A positive reply (e.g. {\"ok\":true} / {\"state\":\"yes\"} / HTTP 200) finishes the chore. A negative reply ({\"ok\":false}, {\"state\":\"no\"}, negative number, HTTP 4xx/5xx) blocks redemption.",
   "settings.choreResetWebhook": "Webhook when reset (No)",
   "settings.choreResetWebhookPlaceholder": "e.g. notify when reset (not done)",
   "settings.choreResetWebhookHint": "Optional. Sent as {\"state\":\"no\",\"done\":false} when Reset today clears the chore.",
@@ -83,5 +83,6 @@
   "reason.day": "That chore is not scheduled today.",
   "reason.limit": "Too many chores.",
   "reason.webhook": "Webhook is not configured or did not answer.",
+  "reason.webhook_denied": "The receiving system did not approve this chore.",
   "reason.upstream": "Yuvomi did not answer."
 }
