@@ -12,7 +12,7 @@ The module is browser code. The Homey address and API key live in a separate sid
 On the Raspberry Pi (default address `192.168.1.24`):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/emosbek/yuvomi-Homey-NOR/cursor/homey-overview-widget-be88/modules/homey/install-pi.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/emosbek/yuvomi-Homey-NOR/cursor/homey-ui-polish-5293/modules/homey/install-pi.sh | sudo bash
 ```
 
 The script clones this branch to `/opt/yuvomi`, installs Docker if needed, and starts Yuvomi plus the gateway. Run the same command again after an update. The gateway loads its code only when the container starts, so the script recreates it. Open `http://192.168.1.24:3000` from another device on the same network.
@@ -27,8 +27,9 @@ That starts Yuvomi on port 3001 and the gateway on port 3000.
 
 3. Open Homey in the menu. Paste the address, for example `http://192.168.1.50`, and the key. Only an administrator can save it.
 4. Pin a control (light, switch, flow, webhook) or show a sensor (temperature, humidity, power). Controls run on press; sensors only display the live value.
-5. Use **Edit** on a pin to change its name and icon (thermometer, lightbulb, speaker, and so on).
-6. Pinned tiles also appear in the **Homey** widget on Overview. The widget is on by default; hide it or change its size under Customize.
+5. Use **Edit** on a pin to choose whether the name and icon come from Homey or from your own alias / Yuvomi icon. Homey device icons are shown when available.
+6. Thermostats and heaters show the live room temperature on the tile (with the setpoint underneath when you pinned a target temperature).
+7. Pinned tiles also appear in the **Homey** widget on Overview. The widget is on by default; hide it or change its size under Customize.
 
 The key is written to `data/homey/state.json` with owner-only file permissions. No route returns it.
 

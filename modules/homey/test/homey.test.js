@@ -11,7 +11,16 @@ import { normalizeCameras, normalizeDevices, normalizeZones, pickCamera, withZon
 import { createHomeyServer } from '../sidecar/server.js';
 import { createStore } from '../sidecar/store.js';
 import { createGateway } from '../gateway.js';
-import { formatNumericPinValue, isDisplayMode, suggestIcon } from '../pin-style.js';
+import {
+  companionTemperature,
+  formatNumericPinValue,
+  formatReading,
+  iconIdFromObj,
+  isDisplayMode,
+  suggestIcon,
+  usesHomeyIcon,
+  usesHomeyLabel,
+} from '../pin-style.js';
 
 const root = fileURLToPath(new URL('../../..', import.meta.url));
 const TOKEN = 'super-secret-token-value';
@@ -72,16 +81,23 @@ function admin(res) {
   }));
 }
 
-test('a Homey device list keeps rooms, controls, and readable sensors', () => {
+test('a Homey device list keeps rooms, controls, readable sensors and Homey icons', () => {
   const devices = normalizeDevices({
     lamp: {
       id: 'lamp',
       name: 'Taklampe',
       class: 'Light',
       zone: 'zone-stue',
+      iconObj: { id: 'hash', url: '/api/icon/lamp-icon-1' },
       capabilities: ['measure_power', 'dim', 'onoff'],
       capabilitiesObj: {
-        onoff: { setable: true, type: 'boolean', title: { nb: 'På', en: 'On' }, value: false },
+        onoff: {
+          setable: true,
+          type: 'boolean',
+          title: { nb: 'På', en: 'On' },
+          value: false,
+          iconObj: { url: '/api/icon/onoff-icon' },
+        },
         dim: { setable: true, type: 'number', title: 'Dim', min: 0, max: 1, step: 0.01, value: 0.4, units: '%' },
         measure_power: { setable: false, type: 'number', title: 'Effekt', units: 'W', value: 12 },
       },
@@ -100,6 +116,7 @@ test('a Homey device list keeps rooms, controls, and readable sensors', () => {
           title: 'Temperatur',
           units: '°C',
           value: 21.5,
+          iconObj: { url: '/api/icon/temp-icon' },
         },
       },
     },
@@ -114,6 +131,8 @@ test('a Homey device list keeps rooms, controls, and readable sensors', () => {
   assert.equal(lamp.zone, 'Stue');
   assert.equal(lamp.deviceClass, 'light');
   assert.equal(lamp.zoneId, undefined);
+  assert.equal(lamp.iconId, 'lamp-icon-1');
+  assert.equal(lamp.capabilities[0].iconId, 'onoff-icon');
   assert.deepEqual(lamp.capabilities.map((cap) => cap.id), ['onoff', 'dim', 'measure_power']);
   assert.equal(lamp.capabilities[0].title, 'På');
   assert.equal(lamp.capabilities[1].min, 0);
@@ -123,6 +142,9 @@ test('a Homey device list keeps rooms, controls, and readable sensors', () => {
   assert.equal(sensor.capabilities[0].id, 'measure_temperature');
   assert.equal(sensor.capabilities[0].role, 'sense');
   assert.equal(sensor.capabilities[0].units, '°C');
+  assert.equal(sensor.capabilities[0].iconId, 'temp-icon');
+  assert.equal(iconIdFromObj({ url: '/api/icon/abc' }), 'abc');
+  assert.equal(iconIdFromObj({ url: 'https://evil.example/api/icon/abc' }), '');
 });
 
 test('a doorbell without controls still counts as a camera and hides its address', () => {
@@ -1007,6 +1029,29 @@ test('pin style picks icons and formats sensor readings', () => {
     value: 21.46,
     units: '°C',
   }), '21.5 °C');
+  assert.equal(formatReading({
+    capabilityId: 'measure_temperature',
+    value: 20.04,
+    units: '°C',
+  }), '20 °C');
+  assert.equal(usesHomeyLabel({ labelMode: 'homey' }), true);
+  assert.equal(usesHomeyLabel({ labelMode: 'custom' }), false);
+  assert.equal(usesHomeyIcon({ iconMode: 'custom' }), false);
+  const thermostat = {
+    deviceClass: 'thermostat',
+    capabilities: [
+      { id: 'target_temperature', value: 21, units: '°C', setable: true },
+      { id: 'measure_temperature', value: 19.6, units: '°C', setable: false },
+    ],
+  };
+  assert.deepEqual(
+    companionTemperature(thermostat, { kind: 'capability', capabilityId: 'target_temperature' }),
+    { value: 19.6, units: '°C', capabilityId: 'measure_temperature' },
+  );
+  assert.equal(
+    companionTemperature(thermostat, { kind: 'capability', capabilityId: 'measure_temperature' }),
+    null,
+  );
 });
 
 test('sidecar pins a temperature sensor as a display tile and allows editing', async () => {
@@ -1021,14 +1066,16 @@ test('sidecar pins a temperature sensor as a display tile and allows editing', a
   });
   const meUrl = await listen(me.server);
   let temperature = 19.2;
+  let deviceName = 'Termometer';
   const fakeHomey = http.createServer((req, res) => {
     if (req.url === '/api/manager/devices/device/') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
         sensor: {
           id: 'sensor',
-          name: 'Termometer',
+          name: deviceName,
           class: 'sensor',
+          iconObj: { url: '/api/icon/sensor-icon' },
           capabilities: ['measure_temperature'],
           capabilitiesObj: {
             measure_temperature: {
@@ -1038,10 +1085,16 @@ test('sidecar pins a temperature sensor as a display tile and allows editing', a
               type: 'number',
               title: 'Temperatur',
               units: '°C',
+              iconObj: { url: '/api/icon/temp-icon' },
             },
           },
         },
       }));
+      return;
+    }
+    if (req.url === '/api/icon/temp-icon') {
+      res.writeHead(200, { 'Content-Type': 'image/svg+xml' });
+      res.end('<svg xmlns="http://www.w3.org/2000/svg"><circle r="1"/></svg>');
       return;
     }
     res.writeHead(404).end();
@@ -1077,15 +1130,26 @@ test('sidecar pins a temperature sensor as a display tile and allows editing', a
         deviceClass: 'sensor',
         mode: 'display',
         units: '°C',
+        labelMode: 'homey',
+        iconMode: 'homey',
+        homeyIconId: 'temp-icon',
       },
     });
     assert.equal(pinned.status, 201, JSON.stringify(pinned.body));
     assert.equal(pinned.body.pin.mode, 'display');
     assert.equal(pinned.body.pin.icon, 'thermometer');
+    assert.equal(pinned.body.pin.labelMode, 'homey');
+    assert.equal(pinned.body.pin.iconMode, 'homey');
+    assert.equal(pinned.body.pin.homeyIconId, 'temp-icon');
+    assert.match(pinned.body.pin.iconUrl, /\/icon\/temp-icon$/);
     const list = await call(base, '/api/extensions/homey/pins', { cookie: jar });
     assert.equal(list.status, 200);
     assert.equal(list.body.pins[0].value, 19.2);
     assert.equal(list.body.pins[0].mode, 'display');
+    assert.equal(list.body.pins[0].label, 'Termometer');
+    const icon = await call(base, '/api/extensions/homey/icon/temp-icon', { cookie: jar });
+    assert.equal(icon.status, 200);
+    assert.match(String(icon.text), /<svg/);
     const activate = await call(base, `/api/extensions/homey/pins/${pinned.body.pin.id}/activate`, {
       method: 'POST',
       cookie: jar,
@@ -1098,15 +1162,120 @@ test('sidecar pins a temperature sensor as a display tile and allows editing', a
       method: 'PATCH',
       cookie: jar,
       csrf: list.body.csrfToken,
-      json: { label: 'Hall sensor', icon: 'droplet' },
+      json: { labelMode: 'custom', label: 'Hall sensor', iconMode: 'custom', icon: 'droplet' },
     });
     assert.equal(patched.status, 200, JSON.stringify(patched.body));
     assert.equal(patched.body.pin.label, 'Hall sensor');
     assert.equal(patched.body.pin.icon, 'droplet');
+    assert.equal(patched.body.pin.labelMode, 'custom');
+    assert.equal(patched.body.pin.iconMode, 'custom');
     temperature = 20.1;
+    deviceName = 'Gangtermometer';
     const refreshed = await call(base, '/api/extensions/homey/pins', { cookie: jar });
     assert.equal(refreshed.body.pins[0].value, 20.1);
     assert.equal(refreshed.body.pins[0].label, 'Hall sensor');
+  } finally {
+    await close(sidecar);
+    await close(fakeHomey);
+    await close(me.server);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('thermostat pins expose the live room temperature beside the setpoint', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'homey-thermo-'));
+  const me = startMe((req, res) => {
+    if (!String(req.headers.cookie || '').includes('yuvomi.sid=ok')) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end('{"error":"Unauthorized"}');
+      return;
+    }
+    admin(res);
+  });
+  const meUrl = await listen(me.server);
+  const fakeHomey = http.createServer((req, res) => {
+    if (req.url === '/api/manager/devices/device/') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        climate: {
+          id: 'climate',
+          name: 'Stue termostat',
+          class: 'thermostat',
+          iconObj: { url: '/api/icon/thermo-icon' },
+          capabilities: ['target_temperature', 'measure_temperature', 'onoff'],
+          capabilitiesObj: {
+            onoff: { value: true, setable: true, type: 'boolean', title: 'På' },
+            target_temperature: {
+              value: 21,
+              setable: true,
+              type: 'number',
+              title: 'Måltemperatur',
+              units: '°C',
+              min: 5,
+              max: 30,
+              step: 0.5,
+            },
+            measure_temperature: {
+              value: 19.4,
+              setable: false,
+              getable: true,
+              type: 'number',
+              title: 'Temperatur',
+              units: '°C',
+            },
+          },
+        },
+      }));
+      return;
+    }
+    res.writeHead(404).end();
+  });
+  const homeyUrl = await listen(fakeHomey);
+  const sidecar = createHomeyServer({
+    dataDir: dir,
+    yuvomiUrl: meUrl,
+    allowLoopback: true,
+  });
+  const base = await listen(sidecar);
+  try {
+    const status = await call(base, '/api/extensions/homey/status', { cookie: 'yuvomi.sid=ok' });
+    const jar = `yuvomi.sid=ok; ${status.cookie}`;
+    const saved = await call(base, '/api/extensions/homey/connection', {
+      method: 'PUT',
+      cookie: jar,
+      csrf: status.body.csrfToken,
+      json: { address: homeyUrl, token: TOKEN },
+    });
+    assert.equal(saved.status, 200, JSON.stringify(saved.body));
+    const pinned = await call(base, '/api/extensions/homey/pins', {
+      method: 'POST',
+      cookie: jar,
+      csrf: saved.body.csrfToken,
+      json: {
+        kind: 'capability',
+        label: 'Stue termostat',
+        detail: 'Stue · Måltemperatur',
+        deviceId: 'climate',
+        capabilityId: 'target_temperature',
+        deviceClass: 'thermostat',
+        mode: 'set',
+        value: 21,
+        labelMode: 'homey',
+        iconMode: 'homey',
+        homeyIconId: 'thermo-icon',
+      },
+    });
+    assert.equal(pinned.status, 201, JSON.stringify(pinned.body));
+    const list = await call(base, '/api/extensions/homey/pins', { cookie: jar });
+    assert.equal(list.status, 200);
+    assert.equal(list.body.pins[0].value, 21);
+    assert.equal(list.body.pins[0].label, 'Stue termostat');
+    assert.deepEqual(list.body.pins[0].reading, {
+      value: 19.4,
+      units: '°C',
+      capabilityId: 'measure_temperature',
+    });
+    assert.equal(list.body.pins[0].homeyIconId, 'thermo-icon');
   } finally {
     await close(sidecar);
     await close(fakeHomey);
@@ -1120,11 +1289,15 @@ test('the overview widget loads pinned buttons and can activate them', () => {
   assert.match(source, /export function pinIcon/);
   assert.match(source, /export function valueLabel/);
   assert.match(source, /export function deviceIcon/);
+  assert.match(source, /export function appendPinIcon/);
+  assert.match(source, /export function secondaryValueLabel/);
   const widget = readFileSync(path.join(root, 'modules/homey/widgets/pins.js'), 'utf8');
   assert.match(widget, /export async function renderWidget/);
   assert.match(widget, /homeyApi\('\/pins'/);
   assert.match(widget, /\/pins\/\$\{encodeURIComponent\(pin\.id\)\}\/activate/);
   assert.match(widget, /ensureStyle\(STYLE\)/);
+  assert.match(widget, /appendPinIcon/);
+  assert.match(widget, /homey-pin--meter/);
 });
 
 test('the Homey page still imports deviceIcon for the Add from Homey catalog', () => {
