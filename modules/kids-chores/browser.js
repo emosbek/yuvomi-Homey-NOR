@@ -42,6 +42,12 @@ export function moduleDisplayTitle(settings, fallbackKey = 'extensions.kids-chor
   return custom || t(fallbackKey);
 }
 
+/** Wall/fullscreen: admin opted in and today has at least one scheduled chore. */
+export function shouldShowOnWall(data) {
+  if (!data || data.settings?.showOnWall !== true) return false;
+  return Array.isArray(data.items) && data.items.length > 0;
+}
+
 export async function choresApi(path, { method = 'GET', body, signal, csrf } = {}) {
   const send = async (token) => {
     const response = await fetch(`${API}${path}`, {

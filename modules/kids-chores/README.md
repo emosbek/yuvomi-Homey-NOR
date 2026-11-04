@@ -2,7 +2,7 @@
 
 Weekly kid chores with points, a progress sun (or star) on Overview, midnight reset, and a reward webhook when the daily goal is reached.
 
-This module lives entirely under `modules/kids-chores/`. It does **not** patch Yuvomi core, so your fork can keep syncing with upstream. State is stored in `data/kids-chores/state.json`, never in `yuvomi.db`.
+Most of the module lives under `modules/kids-chores/`. Wall/full-screen support needs a small hook in `public/pages/dashboard.js` so the overview can mount the panel. State is stored in `data/kids-chores/state.json`, never in `yuvomi.db`.
 
 ## What it does
 
@@ -12,6 +12,7 @@ This module lives entirely under `modules/kids-chores/`. It does **not** patch Y
 - Points add up toward a daily goal. The overview mark fills solid with colour by percentage; at 100% it is fully filled.
 - When the goal is reached once per day, the sidecar can POST a JSON webhook (Homey / Home Assistant) and leave an admin notice inside the module.
 - When every chore for today is done, the configured congratulation message is shown.
+- Optional **Show on wall / full screen** switch: when on and today has chores, the household wall lists them beside Who / Weather.
 
 ## Install on this fork (Raspberry Pi)
 

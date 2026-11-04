@@ -55,6 +55,7 @@ import {
   normalizeDashboardConfigWithExtensions,
   isExtensionWidget,
   getExtensionWidgetMeta,
+  getExtensionModules,
 } from '/utils/extension-widgets.js';
 import { widgetDisplayLabel, optionFieldLabel } from '/utils/extension-i18n.js';
 import { whoMark } from '/utils/seal-pair.js';
@@ -6813,6 +6814,50 @@ function createWallFit(win, signal) {
  * Einpassen stand zuerst als lose Zeile in `rebuildDashboard`, und kein Test
  * merkte, wenn sie fehlte.
  */
+const _wallExtensionModules = new Map();
+
+/** Drop-in modules that opt into the wall (Kids Chores showOnWall, …). */
+function syncWallAsideVisibility(host) {
+  const aside = host?.closest?.('.wall__aside');
+  if (!aside) return;
+  const hasVisibleChild = [...aside.children].some((el) => !el.hidden);
+  aside.hidden = !hasVisibleChild;
+}
+
+async function mountWallExtensionPanels(shell, { signal } = {}) {
+  const host = shell?.querySelector?.('#wall-extension-panels');
+  if (!host) return;
+  const modules = getExtensionModules();
+  const kids = modules.find((m) => m?.id === 'kids-chores' && m.enabled && m.status === 'enabled');
+  if (!kids) {
+    host.replaceChildren();
+    host.hidden = true;
+    syncWallAsideVisibility(host);
+    return;
+  }
+  const entry = '/api/v1/modules/assets/kids-chores/wall.js';
+  try {
+    let mod = _wallExtensionModules.get(entry);
+    if (!mod) {
+      mod = await import(/* webpackIgnore: true */ entry);
+      _wallExtensionModules.set(entry, mod);
+    }
+    if (typeof mod.renderWallPanel !== 'function') {
+      host.replaceChildren();
+      host.hidden = true;
+      syncWallAsideVisibility(host);
+      return;
+    }
+    await mod.renderWallPanel(host, { signal });
+    syncWallAsideVisibility(host);
+  } catch (err) {
+    console.error('[dashboard] Kids Chores wall panel failed', err);
+    host.replaceChildren();
+    host.hidden = true;
+    syncWallAsideVisibility(host);
+  }
+}
+
 function rebuildWall(container, shell, { data, weather, failed, updatedAt, rerender, signal, fit, screensaverEnabled = false, isDisplay = false }) {
   // Der stille Neuaufbau (Minutentakt, Timer) nimmt den Fokus mit, statt ihn
   // auf <body> fallen zu lassen - dasselbe Paar wie in rebuildDashboard.
@@ -6822,6 +6867,7 @@ function rebuildWall(container, shell, { data, weather, failed, updatedAt, reren
   if (globalThis.window?.lucide) globalThis.window.lucide.createIcons({ el: shell });
   wireWallSurface(container, rerender, signal);
   restoreFocusAfterRebuild(container, [keepFocus, takeWallFocusIntent('enter') ? '#wall-surface' : null]);
+  if (!failed) void mountWallExtensionPanels(shell, { signal });
   // Die Titel unter den Gesichtern folgen dem Platz: nach jedem Aufbau von der
   // obersten Stufe hinab.
   return fit.show(shell, data, { isDisplay });
@@ -6924,10 +6970,17 @@ function renderWallSurface(data, weather, { failed = false, loading = false, upd
   } else if (loading) {
     main = '<div class="wall__loading" aria-hidden="true"></div>';
   } else {
-    const aside = `${renderWallWho(data, model)}${renderWallWeather(weather)}`;
+    const who = renderWallWho(data, model);
+    const weatherHtml = renderWallWeather(weather);
+    // Panels host stays in the DOM (hidden) so drop-in modules can fill it
+    // after rebuild; the aside itself stays out when Who/Weather are empty
+    // until a panel unhides it (mountWallExtensionPanels).
+    const panels = '<div class="wall__extension-panels" id="wall-extension-panels" hidden></div>';
+    const asideBody = `${panels}${who}${weatherHtml}`;
+    const asideOpen = Boolean(who || weatherHtml);
     main = `
       ${renderWallProgram(model)}
-      ${aside ? `<div class="wall__aside">${aside}</div>` : ''}`;
+      <div class="wall__aside"${asideOpen ? '' : ' hidden'}>${asideBody}</div>`;
   }
 
   const stamp = updatedAt

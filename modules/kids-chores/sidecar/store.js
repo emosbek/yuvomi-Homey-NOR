@@ -19,6 +19,7 @@ function empty() {
       displayTitle: '',
       webhookUrl: null,
       notifyAdmin: true,
+      showOnWall: false,
       timezone: 'Europe/Oslo',
       progressIcon: 'sun',
     },
@@ -110,6 +111,7 @@ function cleanSettings(raw, fallback) {
     }
   }
   if (raw.notifyAdmin !== undefined) base.notifyAdmin = raw.notifyAdmin !== false;
+  if (raw.showOnWall !== undefined) base.showOnWall = raw.showOnWall === true;
   if (raw.timezone !== undefined) {
     const tz = String(raw.timezone || '').trim();
     if (tz && tz.length <= 64) {
@@ -234,6 +236,7 @@ export function createStore(dir) {
         congratsMessage: s.congratsMessage || '',
         displayTitle: s.displayTitle || '',
         notifyAdmin: s.notifyAdmin !== false,
+        showOnWall: s.showOnWall === true,
         timezone: s.timezone,
         progressIcon: s.progressIcon === 'star' ? 'star' : 'sun',
         webhookSet: Boolean(s.webhookUrl),

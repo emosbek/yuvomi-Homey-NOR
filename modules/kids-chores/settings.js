@@ -240,6 +240,30 @@ export async function render(container, { section, signal }) {
     notifyWrap.append(notify, notifyText);
     settingsForm.append(notifyWrap);
 
+    const wallSwitch = document.createElement('label');
+    wallSwitch.className = 'toggle-row toggle-row--switch kc-wall-switch';
+    const wallLabel = document.createElement('span');
+    wallLabel.className = 'toggle-row__label';
+    wallLabel.textContent = t('extensions.kids-chores.settings.showOnWall');
+    const wallToggle = document.createElement('span');
+    wallToggle.className = 'toggle';
+    const wallInput = document.createElement('input');
+    wallInput.type = 'checkbox';
+    wallInput.setAttribute('role', 'switch');
+    wallInput.checked = settings.showOnWall === true;
+    const wallTrack = document.createElement('span');
+    wallTrack.className = 'toggle__track';
+    wallTrack.setAttribute('aria-hidden', 'true');
+    wallToggle.append(wallInput, wallTrack);
+    wallSwitch.append(wallLabel, wallToggle);
+    const wallHint = document.createElement('p');
+    wallHint.className = 'form-hint';
+    wallHint.textContent = t('extensions.kids-chores.settings.showOnWallHint');
+    const wallField = document.createElement('div');
+    wallField.className = 'form-switch kc-wall-switch-wrap';
+    wallField.append(wallSwitch, wallHint);
+    settingsForm.append(wallField);
+
     const save = document.createElement('button');
     save.type = 'button';
     save.className = 'btn btn--primary';
@@ -254,6 +278,7 @@ export async function render(container, { section, signal }) {
           timezone: tz.value,
           progressIcon: icon.value,
           notifyAdmin: notify.checked,
+          showOnWall: wallInput.checked,
           webhookUrl: webhook.value.trim(),
         };
         const next = await choresApi('/settings', { method: 'PUT', body, csrf, signal });

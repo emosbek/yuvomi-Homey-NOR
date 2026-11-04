@@ -377,3 +377,90 @@
   color: var(--color-text-primary);
   font-size: var(--type-secondary, 0.9rem);
 }
+
+.kc-wall-switch-wrap {
+  margin: 0.35rem 0 0;
+}
+
+.kc-wall-switch {
+  width: 100%;
+}
+
+.kc-wall {
+  min-width: 0;
+}
+
+.kc-wall__progress {
+  display: flex;
+  align-items: center;
+  gap: clamp(var(--space-3, 0.75rem), 1.5vmin, var(--space-5, 1.25rem));
+  margin: 0 0 var(--space-3, 0.75rem);
+}
+
+.kc-wall__mark {
+  flex: 0 0 auto;
+  line-height: 0;
+}
+
+.kc-wall__score {
+  margin: 0;
+  font-size: clamp(var(--text-base, 1rem), 2.4vmin, var(--text-2xl, 1.5rem));
+  font-weight: var(--font-weight-semibold, 650);
+  color: var(--color-text-primary);
+  line-height: var(--line-height-snug, 1.25);
+}
+
+.kc-wall__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: var(--color-surface);
+  border-radius: var(--radius-xl, 16px);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.kc-wall__chore {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: clamp(var(--space-3, 0.75rem), 1.5vmin, var(--space-5, 1.25rem));
+  padding: clamp(var(--space-2, 0.5rem), 1.2vmin, var(--space-4, 1rem))
+    clamp(var(--space-3, 0.75rem), 1.6vmin, var(--space-5, 1.25rem));
+  font-size: clamp(var(--text-base, 1rem), 2.2vmin, var(--text-xl, 1.25rem));
+  color: var(--color-text-primary);
+  line-height: var(--line-height-snug, 1.25);
+}
+
+.kc-wall__chore + .kc-wall__chore {
+  border-top: 1px solid var(--color-border-subtle, rgba(0, 0, 0, 0.08));
+}
+
+.kc-wall__chore-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.kc-wall__chore-points {
+  flex: 0 0 auto;
+  color: var(--color-text-secondary);
+  font-size: 0.9em;
+}
+
+.kc-wall__done {
+  margin: 0;
+  padding: clamp(var(--space-3, 0.75rem), 1.4vmin, var(--space-5, 1.25rem));
+  background: var(--color-surface);
+  border-radius: var(--radius-xl, 16px);
+  box-shadow: var(--shadow-sm);
+  font-size: clamp(var(--text-base, 1rem), 2.2vmin, var(--text-xl, 1.25rem));
+  color: var(--color-text-primary);
+  line-height: var(--line-height-snug, 1.25);
+}
+
+[data-wall-night] .kc-wall__chore + .kc-wall__chore {
+  border-top-color: color-mix(in srgb, var(--color-border-subtle, #fff) 40%, transparent);
+}

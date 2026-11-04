@@ -693,6 +693,57 @@ test('API keeps webhook URL visible on admin settings round-trip', async () => {
   }
 });
 
+test('shouldShowOnWall requires the setting and today’s chores', () => {
+  function shouldShowOnWall(data) {
+    if (!data || data.settings?.showOnWall !== true) return false;
+    return Array.isArray(data.items) && data.items.length > 0;
+  }
+  assert.equal(shouldShowOnWall(null), false);
+  assert.equal(shouldShowOnWall({ settings: { showOnWall: true }, items: [] }), false);
+  assert.equal(shouldShowOnWall({ settings: { showOnWall: false }, items: [{ id: '1' }] }), false);
+  assert.equal(shouldShowOnWall({ settings: { showOnWall: true }, items: [{ id: '1' }] }), true);
+});
+
+test('API stores showOnWall for the wall display', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'kc-'));
+  const me = startMe((_req, res) => admin(res));
+  try {
+    const meUrl = await listen(me);
+    const server = createKidsChoresServer({ dataDir: dir, yuvomiUrl: meUrl });
+    const base = await listen(server);
+    const first = await call(base, '/api/extensions/kids-chores/today', { cookie: 'yuvomi.sid=ok' });
+    const jar = `yuvomi.sid=ok; ${first.cookie}`;
+    const csrf = first.body.csrfToken;
+    assert.equal(first.body.settings.showOnWall, false);
+
+    const saved = await call(base, '/api/extensions/kids-chores/settings', {
+      method: 'PUT',
+      cookie: jar,
+      csrf,
+      json: { showOnWall: true, pointGoal: 10 },
+    });
+    assert.equal(saved.status, 200, JSON.stringify(saved.body));
+    assert.equal(saved.body.settings.showOnWall, true);
+
+    const today = await call(base, '/api/extensions/kids-chores/today', { cookie: jar });
+    assert.equal(today.body.settings.showOnWall, true);
+
+    const off = await call(base, '/api/extensions/kids-chores/settings', {
+      method: 'PUT',
+      cookie: jar,
+      csrf: saved.body.csrfToken || csrf,
+      json: { showOnWall: false },
+    });
+    assert.equal(off.status, 200, JSON.stringify(off.body));
+    assert.equal(off.body.settings.showOnWall, false);
+
+    await close(server);
+  } finally {
+    await close(me);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('API stores displayTitle for the overview widget', async () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'kc-'));
   const me = startMe((_req, res) => admin(res));
